@@ -22,7 +22,6 @@ typedef struct {
   bool term_mouse_drag : 1;
   bool term_mouse_alt : 1;
 } term_mouse;
-
 typedef struct {
   enum : u8 {
     term_keyboard_raw,
@@ -54,8 +53,8 @@ typedef struct {
     u8 function_key; // F1-F12
   } data;
 } term_keyboard;
-
 term_keyboard term_getInput(float timeout_seconds);
+
 #endif
 #ifdef MY_TERM_INPUT_C
 

@@ -2,15 +2,14 @@
 #define MY_TUI_H
 #include "wheels/arenaAllocator.h"
 #include "wheels/fptr.h"
-#include "wheels/print.h"
 #include "wheels/types.h"
 #include <stdio.h>
 
 // data is unusable as wchar after
-struct term_position {
-  i32 row, col; // negetives not valid at all
-};
-struct term_color {
+typedef struct term_position {
+  i32 row, col;
+} term_position;
+typedef struct term_color {
   union {
     struct {
       u8 r, g, b;
@@ -22,12 +21,15 @@ struct term_color {
     term_color_idx = 1,  // 256 bit color
     term_color_full = 2, // 24 byte color
   } tag;
-};
-struct term_cell {
+} term_color;
+typedef struct term_cell {
   wchar c;
   struct term_color bg;
   struct term_color fg;
-};
+} term_cell;
+static bool poseq(term_position a, term_position b) {
+  return *(uintptr_t *)(&a) == *(uintptr_t *)(&b);
+}
 void term_render(void);
 // clears the cell storage
 // should use this if youre rendering everything every frame
@@ -82,6 +84,8 @@ struct term_position get_terminal_size() {
   #error "platform not supported"
 #endif
 
+#include "wheels/hhmap.h"
+#include "wheels/print.h"
 static HHMap *back_buffer = NULL;
 static bool justdumped = false;
 static FILE *globalLog = NULL;
