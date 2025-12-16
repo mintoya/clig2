@@ -1,3 +1,4 @@
+#include <math.h>
 #define LIST_NOCHECKS
 #define MY_TERM_INPUT_C
 #include "input.h"
@@ -40,51 +41,94 @@ void draw_box(u32 row, u32 col, u32 rows, u32 cols) {
     term_setCell_L(row + r, col + cols - 1, vertical, fg, bg);
   }
 }
+struct term_color term_distance_color(i32 row, i32 col) {
+  struct term_color c;
+  c.tag = term_color_full;
+
+  // squared distance (no sqrt needed for color cycling)
+  i32 d = row * row + col * col;
+
+  // cycle hue using distance
+  u8 hue = (u8)(d >> 3); // shift controls how fast colors change
+
+  u8 r, g, b;
+
+  // HSV->RGB with full saturation/value, branchless-ish
+  u8 region = hue / 43;
+  u8 remainder = (hue - region * 43) * 6;
+
+  u8 p = 0;
+  u8 q = 255 - remainder;
+  u8 t = remainder;
+
+  switch (region) {
+  case 0:
+    r = 255;
+    g = t;
+    b = p;
+    break;
+  case 1:
+    r = q;
+    g = 255;
+    b = p;
+    break;
+  case 2:
+    r = p;
+    g = 255;
+    b = t;
+    break;
+  case 3:
+    r = p;
+    g = q;
+    b = 255;
+    break;
+  case 4:
+    r = t;
+    g = p;
+    b = 255;
+    break;
+  default:
+    r = 255;
+    g = p;
+    b = q;
+    break;
+  }
+
+  c.color.r = r;
+  c.color.g = g;
+  c.color.b = b;
+
+  c.tag = term_color_idx;
+  c.color.colorIDX = r;
+
+  return c;
+}
 
 int main(void) {
-  // srand((unsigned)time(NULL));
-  //
-  // const char charset[] =
-  //     "0123456789"
-  //     "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-  //     "abcdefghijklmnopqrstuvwxyz";
-
-  // while (1) {
-  //   struct term_position size = get_terminal_size();
-  //
-  //   for (u32 row = 0; row < size.row; row++) {
-  //     for (u32 col = 0; col < size.col; col++) {
-  //       char c = charset[rand() % (sizeof(charset) - 1)];
-  //       u8 fg = rand() % 256;
-  //       u8 bg = rand() % 256;
-  //       term_setCell_L(row, col, c, fg, bg);
-  //     }
-  //   }
-  //   term_keyboard k = term_getInput(100);
-  //   print_wfO(
-  //       fileprint,
-  //       globalLog,
-  //       "{term_keyboard}\n", k
-  //   );
-  //   term_render();
-  //   term_dump();
-  // }
   i64 row = 0;
   i64 col = 0;
   while (1) {
-    draw_box(row, col, 10, 10);
-    term_render();
-    term_dump();
     term_keyboard k = term_getInput(100);
-    print_wfO(
-        fileprint,
-        globalLog,
-        "{term_keyboard}\n", k
-    );
     if (k.kind == term_keyboard_mouse) {
       row = k.data.mouse.row;
       col = k.data.mouse.col;
+      struct term_position screen = get_terminal_size();
+      for (int i = 0; i < screen.row; i++) {
+        for (int j = 0; j < screen.col; j++) {
+          term_setCell(
+              (struct term_position){i, j},
+              (struct term_cell){
+                  L' ',
+                  term_distance_color(i - k.data.mouse.row, j - k.data.mouse.col),
+                  term_distance_color(i - k.data.mouse.row, j - k.data.mouse.col),
+              }
+          );
+        }
+      }
     }
+    term_render();
+    // term_dump();
+    nanosleep(&(struct timespec){0, 10000000}, NULL);
   }
 
   return 0;

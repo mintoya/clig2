@@ -82,11 +82,13 @@ static FILE *globalLog = NULL;
   size_t value_align = alignof(struct term_cell);
   size_t padded_key_size = (key_size + value_align - 1) & ~(value_align - 1);
 
+  u32 r = get_terminal_size().row;
+  u32 c = get_terminal_size().col;
   back_buffer = HHMap_new(
       padded_key_size,
       value_size,
       defaultAlloc,
-      10
+      r * c * 5
   );
   dumpList = List_new(defaultAlloc, sizeof(struct term_position));
   globalLog = fopen("tui.log", "a");
@@ -144,12 +146,15 @@ void term_render(void) {
     printList = List_new(defaultAlloc, sizeof(wchar));
 
   if (recent.row != last.row || recent.col != last.col) {
-    print("\033[0m\033[3J\033[2J\033[H");
+    fwrite_unlocked("\033[0m\033[3J\033[2J\033[H", sizeof(char), 16, stdout);
     fflush(stdout);
 
     if (stdout_bufLen < recent.row * recent.col) {
+      if (stdout_buf)
+        free(stdout_buf);
       stdout_bufLen = recent.row * recent.col;
-      setvbuf(stdout, stdout_buf, _IOFBF, stdout_bufLen);
+      stdout_buf = (char *)malloc(stdout_bufLen * 5);
+      setvbuf(stdout, stdout_buf, _IOFBF, stdout_bufLen * 5);
     }
 
     print_wfO(
@@ -175,40 +180,50 @@ void term_render(void) {
       const struct term_position *position = (struct term_position *)it;
       const struct term_cell *cell = (struct term_cell *)((u8 *)it + sizeof(struct term_position));
       if (position->col < recent.col && position->row < recent.row && position->row > -1 && position->col > -1) {
-        print_wfO(asPrint, &printList, "\033[{};{}H", position->row + 1, position->col + 1);
+        List_resize(printList, printList->length + 64);
+        printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[%d;%dH", position->row + 1, position->col + 1);
 
         switch (cell->fg.tag) {
         case term_color_idx: {
-          print_wfO(asPrint, &printList, "\033[38;5;{}m", (int)cell->fg.color.colorIDX);
+          List_resize(printList, printList->length + 64);
+          printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[38;5;%dm", (int)cell->fg.color.colorIDX);
         } break;
         case term_color_full: {
-          print_wfO(asPrint, &printList, "\033[38;2;{};{};{}m", (int)cell->fg.color.r, (int)cell->fg.color.g, (int)cell->fg.color.b);
+          List_resize(printList, printList->length + 64);
+          printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[38;2;%d;%d;%dm", (int)cell->fg.color.r, (int)cell->fg.color.g, (int)cell->fg.color.b);
         }
         default: {
-          print_wfO(asPrint, &printList, "\033[39m"); // default foreground
-        } break;
-        }
-        switch (cell->bg.tag) {
-        case term_color_idx: {
-          print_wfO(asPrint, &printList, "\033[48;5;{}m", (int)cell->bg.color.colorIDX);
-        } break;
-        case term_color_full: {
-          print_wfO(asPrint, &printList, "\033[48;2;{};{};{}m", (int)cell->bg.color.r, (int)cell->bg.color.g, (int)cell->bg.color.b);
-        }
-        default: {
-          print_wfO(asPrint, &printList, "\033[49m");
+          List_resize(printList, printList->length + 64);
+          printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[39m");
         } break;
         }
 
-        if (cell->c)
-          print_wfO(asPrint, &printList, "{wchar}", (wchar)cell->c);
-        else
-          print_wfO(asPrint, &printList, "{wchar}", (wchar)' ');
+        switch (cell->bg.tag) {
+        case term_color_idx: {
+          List_resize(printList, printList->length + 64);
+          printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[48;5;%dm", (int)cell->bg.color.colorIDX);
+        } break;
+        case term_color_full: {
+          List_resize(printList, printList->length + 64);
+          printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[48;2;%d;%d;%dm", (int)cell->bg.color.r, (int)cell->bg.color.g, (int)cell->bg.color.b);
+        }
+        default: {
+          List_resize(printList, printList->length + 64);
+          printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[49m");
+        } break;
+        }
+
+        wchar_t wc = cell->c ? cell->c : L' ';
+        List_resize(printList, printList->length + 64);
+        printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"%lc", wc);
       }
     }
   }
+  // TODO convert to chars
   fptr rendered = (fptr){List_headArea(printList), printList->head};
-  print("{fptr<wchar>}", rendered);
+  fwrite_unlocked(rendered.ptr, sizeof(char), rendered.width, stdout);
+
+  fflush(stdout);
   printList->length = 0;
   last = recent;
 }
