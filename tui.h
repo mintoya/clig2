@@ -6,7 +6,19 @@
 #include "wheels/types.h"
 #include <stdio.h>
 
-void fast_wchar_write(wchar_t *data, size_t len) {
+void List_wcs_addint(List *li, u32 in) {
+  usize l = 1;
+  while (l <= in / 10)
+    l *= 10;
+  while (l) {
+    char c = in / l + '0';
+    List_append(li, &c);
+    in %= l;
+    l /= 10;
+  }
+}
+// data is unusable as wchar after
+void quick_wchar_utf(wchar_t *data, size_t len) {
   char *utf8_ptr = (char *)data;
   size_t utf8_len = 0;
 
@@ -159,23 +171,11 @@ void term_render(void) {
 
   static List *printList = NULL;
 
-  static char *stdout_buf = NULL;
-  static u32 stdout_bufLen = 0;
-
   if (!printList)
     printList = List_new(defaultAlloc, sizeof(wchar));
 
   if (recent.row != last.row || recent.col != last.col) {
     fwrite("\033[0m\033[3J\033[2J\033[H", sizeof(char), 16, stdout);
-    fflush(stdout);
-
-    if (stdout_bufLen < recent.row * recent.col) {
-      if (stdout_buf)
-        free(stdout_buf);
-      stdout_bufLen = recent.row * recent.col;
-      stdout_buf = (char *)malloc(stdout_bufLen * 5);
-      setvbuf(stdout, stdout_buf, _IOFBF, stdout_bufLen * 5);
-    }
 
     print_wfO(
         fileprint,
@@ -239,8 +239,7 @@ void term_render(void) {
       }
     }
   }
-  // fwrite(printList->head, sizeof(wchar), printList->length, stdout);
-  fast_wchar_write((wchar *)printList->head, printList->length);
+  quick_wchar_utf((wchar *)printList->head, printList->length);
 
   fflush(stdout);
   printList->length = 0;
