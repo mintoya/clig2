@@ -46,15 +46,10 @@ struct term_color term_distance_color(i32 row, i32 col) {
   struct term_color c;
   c.tag = term_color_full;
 
-  // squared distance (no sqrt needed for color cycling)
   i32 d = row * row + col * col;
+  u8 hue = (u8)(d >> 3);
 
-  // cycle hue using distance
-  u8 hue = (u8)(d >> 3); // shift controls how fast colors change
-
-  u8 r, g, b;
-
-  // HSV->RGB with full saturation/value, branchless-ish
+  u8 r;
   u8 region = hue / 43;
   u8 remainder = (hue - region * 43) * 6;
 
@@ -65,39 +60,23 @@ struct term_color term_distance_color(i32 row, i32 col) {
   switch (region) {
   case 0:
     r = 255;
-    g = t;
-    b = p;
     break;
   case 1:
     r = q;
-    g = 255;
-    b = p;
     break;
   case 2:
     r = p;
-    g = 255;
-    b = t;
     break;
   case 3:
     r = p;
-    g = q;
-    b = 255;
     break;
   case 4:
     r = t;
-    g = p;
-    b = 255;
     break;
   default:
     r = 255;
-    g = p;
-    b = q;
     break;
   }
-
-  c.color.r = r;
-  c.color.g = g;
-  c.color.b = b;
 
   c.tag = term_color_idx;
   c.color.colorIDX = r;
@@ -124,9 +103,9 @@ int main(void) {
           term_setCell(
               (struct term_position){i, j},
               (struct term_cell){
-                  L' ',
+                  L'┘',
                   term_distance_color(i - k.data.mouse.row, j - k.data.mouse.col),
-                  term_distance_color(i - k.data.mouse.row, j - k.data.mouse.col),
+                  term_distance_color(255 - i - k.data.mouse.row, j - k.data.mouse.col),
               }
           );
         }

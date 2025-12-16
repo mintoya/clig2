@@ -6,29 +6,7 @@
 #include "wheels/types.h"
 #include <stdio.h>
 
-void List_wcs_addint(List *li, u32 in) {
-  usize l = 1;
-  while (l <= in / 10)
-    l *= 10;
-  while (l) {
-    char c = in / l + '0';
-    List_append(li, &c);
-    in %= l;
-    l /= 10;
-  }
-}
 // data is unusable as wchar after
-void quick_wchar_utf(wchar_t *data, size_t len) {
-  char *utf8_ptr = (char *)data;
-  size_t utf8_len = 0;
-
-  for (int i = 0; i < len; i++) {
-    mbstate_t mbs = {0};
-    utf8_len += wcrtomb(utf8_ptr + utf8_len, data[i], &mbs);
-  }
-
-  fwrite(utf8_ptr, 1, utf8_len, stdout);
-}
 struct term_position {
   i32 row, col; // negetives not valid at all
 };
@@ -105,9 +83,34 @@ struct term_position get_terminal_size() {
 #endif
 
 static HHMap *back_buffer = NULL;
-static List *dumpList = NULL;
+static bool justdumped = false;
 static FILE *globalLog = NULL;
 
+void convertwrite(wchar_t *data, usize len) {
+  static usize writeMax = 0;
+  usize wlen = 0;
+
+  mbstate_t mbs = {0};
+  for (int i = 0; i < len; i++) {
+    wlen += wcrtomb(((char *)data) + wlen, data[i], &mbs);
+  }
+
+#if defined(__linux__)
+  write(STDOUT_FILENO, ((char *)data), wlen);
+#else
+  fwrite(data, sizeof(char), wlen, stdout);
+#endif
+
+  if (wlen > writeMax) {
+    writeMax = wlen;
+    print_wfO(
+        fileprint,
+        globalLog,
+        "maxwrite: {}\n",
+        writeMax
+    );
+  }
+}
 [[gnu::constructor]] void term_setup(void) {
   size_t key_size = sizeof(struct term_position);
   size_t value_size = sizeof(struct term_cell);
@@ -122,7 +125,6 @@ static FILE *globalLog = NULL;
       defaultAlloc,
       r * c * 5
   );
-  dumpList = List_new(defaultAlloc, sizeof(struct term_position));
   globalLog = fopen("tui.log", "a");
 }
 [[gnu::destructor]] void term_cleanup(void) {
@@ -164,8 +166,44 @@ void term_setCell_LL(i32 row, i32 col, wchar character, u8 fgr, u8 fgg, u8 fgb, 
   );
 }
 #include <time.h>
+bool coloreq(struct term_color a, struct term_color b) {
+  return !memcmp(&a, &b, sizeof(a));
+}
+void list_addfgColor(List *printList, struct term_color fg) {
+  typeof(fg) currentfg = fg;
+  switch (currentfg.tag) {
+  case term_color_idx: {
+    List_resize(printList, printList->length + 64);
+    printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[38;5;%dm", (int)currentfg.color.colorIDX);
+  } break;
+  case term_color_full: {
+    List_resize(printList, printList->length + 64);
+    printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[38;2;%d;%d;%dm", (int)currentfg.color.r, (int)currentfg.color.g, (int)currentfg.color.b);
+  }
+  default: {
+    List_resize(printList, printList->length + 64);
+    printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[39m");
+  } break;
+  }
+}
+void list_addbgColor(List *printList, struct term_color bg) {
+  typeof(bg) currentbg = bg;
+  switch (currentbg.tag) {
+  case term_color_idx: {
+    List_resize(printList, printList->length + 64);
+    printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[48;5;%dm", (int)currentbg.color.colorIDX);
+  } break;
+  case term_color_full: {
+    List_resize(printList, printList->length + 64);
+    printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[48;2;%d;%d;%dm", (int)currentbg.color.r, (int)currentbg.color.g, (int)currentbg.color.b);
+  }
+  default: {
+    List_resize(printList, printList->length + 64);
+    printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[49m");
+  } break;
+  }
+}
 void term_render(void) {
-
   static struct term_position last = {0, 0};
   struct term_position recent = get_terminal_size();
 
@@ -175,7 +213,8 @@ void term_render(void) {
     printList = List_new(defaultAlloc, sizeof(wchar));
 
   if (recent.row != last.row || recent.col != last.col) {
-    fwrite("\033[0m\033[3J\033[2J\033[H", sizeof(char), 16, stdout);
+    List_resize(printList, printList->length + 64);
+    printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[0m\033[3J\033[2J\033[H");
 
     print_wfO(
         fileprint,
@@ -186,73 +225,48 @@ void term_render(void) {
     );
   }
 
-  for (u32 i = 0; i < List_length(dumpList); i++) {
-    const struct term_position *position = (struct term_position *)List_getRef(dumpList, i);
-    if (position->col < recent.col && position->row < recent.row && position->row > -1 && position->col > -1)
-      print_wfO(asPrint, &printList, "\033[{};{}H\033[49m ", position->row + 1, position->col + 1);
+  if (justdumped) {
+    List_resize(printList, printList->length + 64);
+    printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[0m\033[3J\033[2J\033[H");
+    justdumped = false;
   }
-  dumpList->length = 0;
+
+  struct term_color lastbg = {0};
+  struct term_color lastfg = {0};
   for (u32 i = 0; i < HHMap_getMetaSize(back_buffer); i++) {
     for (u32 j = 0; j < HHMap_getBucketSize(back_buffer, i); j++) {
       void *it = HHMap_getCoord(back_buffer, i, j);
-      if (!it)
-        break;
-      const struct term_position *position = (struct term_position *)it;
-      const struct term_cell *cell = (struct term_cell *)((u8 *)it + sizeof(struct term_position));
+      struct term_position *position = (struct term_position *)it;
+      struct term_cell *cell = (struct term_cell *)((u8 *)it + sizeof(struct term_position));
+
+      struct term_color currentbg = cell->bg;
+      struct term_color currentfg = cell->fg;
+
       if (position->col < recent.col && position->row < recent.row && position->row > -1 && position->col > -1) {
         List_resize(printList, printList->length + 64);
         printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[%d;%dH", position->row + 1, position->col + 1);
 
-        switch (cell->fg.tag) {
-        case term_color_idx: {
-          List_resize(printList, printList->length + 64);
-          printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[38;5;%dm", (int)cell->fg.color.colorIDX);
-        } break;
-        case term_color_full: {
-          List_resize(printList, printList->length + 64);
-          printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[38;2;%d;%d;%dm", (int)cell->fg.color.r, (int)cell->fg.color.g, (int)cell->fg.color.b);
-        }
-        default: {
-          List_resize(printList, printList->length + 64);
-          printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[39m");
-        } break;
-        }
-
-        switch (cell->bg.tag) {
-        case term_color_idx: {
-          List_resize(printList, printList->length + 64);
-          printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[48;5;%dm", (int)cell->bg.color.colorIDX);
-        } break;
-        case term_color_full: {
-          List_resize(printList, printList->length + 64);
-          printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[48;2;%d;%d;%dm", (int)cell->bg.color.r, (int)cell->bg.color.g, (int)cell->bg.color.b);
-        }
-        default: {
-          List_resize(printList, printList->length + 64);
-          printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[49m");
-        } break;
+        if (!coloreq(currentbg, lastbg) || !coloreq(currentfg, lastfg)) {
+          list_addfgColor(printList, currentfg);
+          list_addbgColor(printList, currentbg);
         }
 
         wchar_t wc = cell->c ? cell->c : L' ';
-        List_resize(printList, printList->length + 64);
-        printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"%lc", wc);
+        List_append(printList, &wc);
       }
+
+      lastbg = currentbg;
+      lastfg = currentfg;
     }
   }
-  quick_wchar_utf((wchar *)printList->head, printList->length);
+  convertwrite((wchar *)printList->head, printList->length);
 
   fflush(stdout);
   printList->length = 0;
   last = recent;
 }
 void term_dump() {
-  for (u32 i = 0; i < HHMap_getMetaSize(back_buffer); i++) {
-    for (u32 j = 0; j < HHMap_getBucketSize(back_buffer, i); j++) {
-      void *it = HHMap_getCoord(back_buffer, i, j);
-      if (it)
-        List_append(dumpList, it);
-    }
-  }
+  justdumped = true;
   HHMap_clear(back_buffer);
 }
 #endif // MY_TUI_C
