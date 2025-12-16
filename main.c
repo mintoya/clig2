@@ -62,19 +62,17 @@ term_element *button(void) {
       L'B',
       term_color_fromHex(0xff0000),
       term_color_fromIdx(0),
-      .exists = 1
+      .visible = 1
   };
-  p->onHover = (term_cell){
-      L'B',
-      term_color_fromIdx(0),
-      term_color_fromIdx(15),
-      .exists = 1
-  };
+
+  p->onHover = p->inactive;
+  p->onHover.inverse = true;
+
   p->onClick = (term_cell){
       L'C',
       term_color_fromIdx(160),
       term_color_fromIdx(15),
-      .exists = 1
+      .visible = 1
   };
   *res = (term_element){
       .render = button_render,
@@ -84,7 +82,6 @@ term_element *button(void) {
 }
 
 int main(int argc, char *argv[]) {
-  nanosleep(&(struct timespec){2, 0}, NULL);
   add_element(button());
   while (1)
     term_renderElements(term_getInput(1));

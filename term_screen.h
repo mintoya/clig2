@@ -3,6 +3,7 @@
 #include "wheels/arenaAllocator.h"
 #include "wheels/fptr.h"
 #include "wheels/types.h"
+#include <assert.h>
 #include <stdio.h>
 
 // data is unusable as wchar after
@@ -48,10 +49,22 @@ typedef struct term_cell {
   wchar c;
   struct term_color bg;
   struct term_color fg;
-  u32 exists;
+  // clang-format off
+  bool bold          : 1;//TODO
+  bool italic        : 1;//TODO
+  bool underline     : 1;//TODO
+  bool blinking      : 1;//TODO
+  bool strikethrough : 1;//TODO
+  bool inverse       : 1;
+  bool visible       : 1;
+  // clang-format on
 } term_cell;
 static bool poseq(term_position a, term_position b) {
-  return *(uintptr_t *)(&a) == *(uintptr_t *)(&b);
+  return (a.col == b.col && a.row == b.row);
+}
+bool coloreq(struct term_color a, struct term_color b) {
+  static_assert(sizeof(a) == sizeof(u32), "use memcmp");
+  return (*(u32 *)&a == *(u32 *)&b);
 }
 void term_render(void);
 // clears the cell storage
@@ -195,9 +208,6 @@ void term_setCell_LL(i32 row, i32 col, wchar character, u8 fgr, u8 fgg, u8 fgb, 
   );
 }
 #include <time.h>
-bool coloreq(struct term_color a, struct term_color b) {
-  return !memcmp(&a, &b, sizeof(a));
-}
 void list_addfgColor(List *printList, struct term_color fg) {
   typeof(fg) currentfg = fg;
   switch (currentfg.tag) {
@@ -249,8 +259,7 @@ void term_render(void) {
     printList = List_new(defaultAlloc, sizeof(wchar));
 
   if (recent.row != last.row || recent.col != last.col) {
-    List_resize(printList, printList->length + 64);
-    printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[0m\033[3J\033[2J\033[H");
+    List_appendFromArr(printList, L"\033[0m\033[2J", 9);
 
     print_wfO(
         fileprint,
@@ -261,9 +270,9 @@ void term_render(void) {
     );
   }
 
+  List_appendFromArr(printList, L"\033[3J", 5);
   if (justdumped) {
-    List_resize(printList, printList->length + 64);
-    printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[0m\033[3J\033[2J\033[H");
+    List_appendFromArr(printList, L"\033[0m\033[2J", 9);
     justdumped = false;
   }
 
@@ -278,17 +287,32 @@ void term_render(void) {
       struct term_color currentbg = cell->bg;
       struct term_color currentfg = cell->fg;
 
-      if (cell->exists && position->col < recent.col && position->row < recent.row && position->row > -1 && position->col > -1) {
+      if (cell->visible && position->col < recent.col && position->row < recent.row && position->row > -1 && position->col > -1) {
         List_resize(printList, printList->length + 64);
         printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[%d;%dH", position->row + 1, position->col + 1);
 
+        if (cell->inverse) {
+          term_color t = currentbg;
+          currentbg = currentfg;
+          currentfg = t;
+        }
+        if (cell->bold)
+          List_appendFromArr(printList, L"\033[1m", 5);
+        if (cell->italic)
+          List_appendFromArr(printList, L"\033[3m", 5);
+        if (cell->underline)
+          List_appendFromArr(printList, L"\033[4m", 5);
+        if (cell->blinking)
+          List_appendFromArr(printList, L"\033[5m", 5);
+        if (cell->strikethrough)
+          List_appendFromArr(printList, L"\033[9m", 5);
         if (!coloreq(currentbg, lastbg) || !coloreq(currentfg, lastfg)) {
           list_addfgColor(printList, currentfg);
           list_addbgColor(printList, currentbg);
         }
-
         wchar_t wc = cell->c ? cell->c : L' ';
         List_append(printList, &wc);
+        List_appendFromArr(printList, L"\033[0m", 5);
       }
 
       lastbg = currentbg;
