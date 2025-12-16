@@ -16,8 +16,12 @@ extern int nanosleep(const struct timespec *request, struct timespec *remain);
 
 struct buttonstate {
   term_position position;
-  term_cell look;
-  term_cell look2;
+  term_position size;
+  term_cell inactive;
+  term_cell onHover;
+  term_cell onClick;
+  usize bufferlen;
+  u8 *buffer;
 };
 u32 udist(term_position a, term_position b) {
   i32 ax = a.row;
@@ -34,10 +38,14 @@ u32 udist(term_position a, term_position b) {
 }
 term_element_slice button_render(term_element *selfptr, const term_keyboard *inputstate) {
   struct buttonstate *selfPos = (struct buttonstate *)selfptr->arb;
-  term_cell *respos = &selfPos->look;
+  term_cell *respos = &selfPos->inactive;
   if (inputstate->kind == term_keyboard_mouse) {
     if (udist(selfPos->position, (term_position){inputstate->data.mouse.row, inputstate->data.mouse.col}) < 20) {
-      respos = &selfPos->look2;
+      if (inputstate->data.mouse.code.known == term_mouse_left && inputstate->data.mouse.state == term_mouse_down) {
+        respos = &selfPos->onClick;
+      } else {
+        respos = &selfPos->onHover;
+      }
     }
   }
   return (term_element_slice){
@@ -50,27 +58,23 @@ term_element *button(void) {
   term_element *res = (term_element *)aAlloc(defaultAlloc, sizeof(term_element));
   struct buttonstate *p = (struct buttonstate *)aAlloc(defaultAlloc, sizeof(struct buttonstate));
   p->position = (term_position){10, 10};
-  p->look = (term_cell){
+  p->inactive = (term_cell){
       L'B',
-      (term_color){
-          .tag = term_color_idx,
-          .color.colorIDX = 15,
-      },
-      (term_color){
-          .tag = term_color_idx,
-          .color.colorIDX = 0,
-      },
+      term_color_fromHex(0xff0000),
+      term_color_fromIdx(0),
+      .exists = 1
   };
-  p->look2 = (term_cell){
+  p->onHover = (term_cell){
       L'B',
-      (term_color){
-          .tag = term_color_idx,
-          .color.colorIDX = 0,
-      },
-      (term_color){
-          .tag = term_color_idx,
-          .color.colorIDX = 15,
-      },
+      term_color_fromIdx(0),
+      term_color_fromIdx(15),
+      .exists = 1
+  };
+  p->onClick = (term_cell){
+      L'C',
+      term_color_fromIdx(160),
+      term_color_fromIdx(15),
+      .exists = 1
   };
   *res = (term_element){
       .render = button_render,
@@ -80,6 +84,7 @@ term_element *button(void) {
 }
 
 int main(int argc, char *argv[]) {
+  nanosleep(&(struct timespec){2, 0}, NULL);
   add_element(button());
   while (1)
     term_renderElements(term_getInput(1));

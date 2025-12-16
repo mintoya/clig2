@@ -7,8 +7,13 @@
 
 // data is unusable as wchar after
 typedef struct term_position {
-  i32 row, col;
+  i64 row, col;
 } term_position;
+enum term_colorTag : u8 {
+  term_color_def = 0,  // default / reset
+  term_color_idx = 1,  // term colors
+  term_color_full = 2, // 24 bit color
+};
 typedef struct term_color {
   union {
     struct {
@@ -16,16 +21,34 @@ typedef struct term_color {
     };
     u8 colorIDX;
   } color;
-  enum : u8 {
-    term_color_def = 0,  // default / reset
-    term_color_idx = 1,  // 256 bit color
-    term_color_full = 2, // 24 byte color
-  } tag;
+  enum term_colorTag tag;
 } term_color;
+
+static inline term_color term_color_fromHex(u32 hex) {
+  return (term_color){
+      .tag = term_color_full,
+      .color = {
+          .r = (u8)((hex & 0xff0000) >> 0x10),
+          .g = (u8)((hex & 0x00ff00) >> 0x08),
+          .b = (u8)((hex & 0x0000ff) >> 0x00),
+      }
+  };
+}
+static inline term_color term_color_fromIdx(u8 hex) {
+  return (term_color){
+      .tag = term_color_idx,
+      .color.colorIDX = hex
+  };
+};
+static inline term_color term_color_default() {
+  return (term_color){.tag = term_color_def};
+}
+
 typedef struct term_cell {
   wchar c;
   struct term_color bg;
   struct term_color fg;
+  u32 exists;
 } term_cell;
 static bool poseq(term_position a, term_position b) {
   return *(uintptr_t *)(&a) == *(uintptr_t *)(&b);
@@ -113,19 +136,21 @@ void convertwrite(wchar_t *data, usize len) {
         "maxwrite: {}\n",
         writeMax
     );
+    print_wfO(
+        fileprint,
+        globalLog,
+        "hmap size: {}\n",
+        HHMap_footprint(back_buffer)
+    );
   }
 }
+static_assert(sizeof(term_position) == sizeof(term_cell), "add alignment handling ");
 [[gnu::constructor]] void term_setup(void) {
-  size_t key_size = sizeof(struct term_position);
-  size_t value_size = sizeof(struct term_cell);
-  size_t value_align = alignof(struct term_cell);
-  size_t padded_key_size = (key_size + value_align - 1) & ~(value_align - 1);
-
   u32 r = get_terminal_size().row;
   u32 c = get_terminal_size().col;
   back_buffer = HHMap_new(
-      padded_key_size,
-      value_size,
+      sizeof(term_position),
+      sizeof(term_cell),
       defaultAlloc,
       r * c * 5
   );
@@ -182,8 +207,15 @@ void list_addfgColor(List *printList, struct term_color fg) {
   } break;
   case term_color_full: {
     List_resize(printList, printList->length + 64);
-    printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[38;2;%d;%d;%dm", (int)currentfg.color.r, (int)currentfg.color.g, (int)currentfg.color.b);
-  }
+    printList->length += swprintf(
+        (wchar *)List_getRefForce(printList, printList->length),
+        64,
+        L"\033[38;2;%d;%d;%dm",
+        (int)currentfg.color.r,
+        (int)currentfg.color.g,
+        (int)currentfg.color.b
+    );
+  } break;
   default: {
     List_resize(printList, printList->length + 64);
     printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[39m");
@@ -200,7 +232,7 @@ void list_addbgColor(List *printList, struct term_color bg) {
   case term_color_full: {
     List_resize(printList, printList->length + 64);
     printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[48;2;%d;%d;%dm", (int)currentbg.color.r, (int)currentbg.color.g, (int)currentbg.color.b);
-  }
+  } break;
   default: {
     List_resize(printList, printList->length + 64);
     printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[49m");
@@ -246,7 +278,7 @@ void term_render(void) {
       struct term_color currentbg = cell->bg;
       struct term_color currentfg = cell->fg;
 
-      if (position->col < recent.col && position->row < recent.row && position->row > -1 && position->col > -1) {
+      if (cell->exists && position->col < recent.col && position->row < recent.row && position->row > -1 && position->col > -1) {
         List_resize(printList, printList->length + 64);
         printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[%d;%dH", position->row + 1, position->col + 1);
 
