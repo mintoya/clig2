@@ -1,0 +1,8 @@
+---
+BasedOnStyle: LLVM
+IndentPPDirectives: BeforeHash
+AlignAfterOpenBracket: BlockIndent 
+BinPackParameters: false
+AllowAllParametersOfDeclarationOnNextLine: false
+ColumnLimit: 0
+...
