@@ -1,4 +1,5 @@
 #include <math.h>
+#include <stdio.h>
 #define LIST_NOCHECKS
 #define MY_TERM_INPUT_C
 #include "input.h"
@@ -104,7 +105,12 @@ struct term_color term_distance_color(i32 row, i32 col) {
   return c;
 }
 
+#ifdef _WIN32
+extern int nanosleep(const struct timespec *request, struct timespec *remain);
+#endif
 int main(void) {
+  print("hellow utf8  {wcstr}", (wchar *)L"");
+  nanosleep(&(struct timespec){2, 0}, NULL);
   i64 row = 0;
   i64 col = 0;
   while (1) {

@@ -6,6 +6,17 @@
 #include "wheels/types.h"
 #include <stdio.h>
 
+void fast_wchar_write(wchar_t *data, size_t len) {
+  char *utf8_ptr = (char *)data;
+  size_t utf8_len = 0;
+
+  for (int i = 0; i < len; i++) {
+    mbstate_t mbs = {0};
+    utf8_len += wcrtomb(utf8_ptr + utf8_len, data[i], &mbs);
+  }
+
+  fwrite(utf8_ptr, 1, utf8_len, stdout);
+}
 struct term_position {
   i32 row, col; // negetives not valid at all
 };
@@ -43,20 +54,29 @@ struct term_position get_terminal_size(void);
 #ifdef MY_TUI_C
 #if defined(_WIN32)
   #include <windows.h>
-struct term_termSize get_terminal_size() {
-  struct term_termSize size = {0, 0};
+struct term_position get_terminal_size() {
+  struct term_position size = {0, 0};
 
   CONSOLE_SCREEN_BUFFER_INFO csbi;
   if (GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi)) {
-    size.cols = csbi.srWindow.Right - csbi.srWindow.Left + 1;
-    size.rows = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
+    size.col = csbi.srWindow.Right - csbi.srWindow.Left + 1;
+    size.row = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
   }
 
   return size;
 }
+  #include <fcntl.h>
+  #include <io.h>
+[[gnu::constructor]] void rawConsoleSetup() {
+  _setmode(_fileno(stdout), _O_BINARY);
+}
 #elif defined(__linux__)
   #include <sys/ioctl.h>
   #include <unistd.h>
+// #include <fcntl.h>
+// [[gnu::constructor]] void rawConsoleSetup() {
+//   fcntl(STDOUT_FILENO, F_SETFL, 0x4000);
+// }
 struct term_position get_terminal_size() {
   struct term_position size = {0, 0};
 
@@ -146,7 +166,7 @@ void term_render(void) {
     printList = List_new(defaultAlloc, sizeof(wchar));
 
   if (recent.row != last.row || recent.col != last.col) {
-    fwrite_unlocked("\033[0m\033[3J\033[2J\033[H", sizeof(char), 16, stdout);
+    fwrite("\033[0m\033[3J\033[2J\033[H", sizeof(char), 16, stdout);
     fflush(stdout);
 
     if (stdout_bufLen < recent.row * recent.col) {
@@ -219,9 +239,8 @@ void term_render(void) {
       }
     }
   }
-  // TODO convert to chars
-  fptr rendered = (fptr){List_headArea(printList), printList->head};
-  fwrite_unlocked(rendered.ptr, sizeof(char), rendered.width, stdout);
+  // fwrite(printList->head, sizeof(wchar), printList->length, stdout);
+  fast_wchar_write((wchar *)printList->head, printList->length);
 
   fflush(stdout);
   printList->length = 0;
