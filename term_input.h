@@ -50,7 +50,7 @@ typedef struct {
       term_keyboard_home = 'H',
       term_keyboard_end = 'F',
     } arrow;
-    u8 function_key; // F1-F12
+    u8 function_key;
   } data;
 } term_keyboard;
 term_keyboard term_getInput(float timeout_seconds);
@@ -59,10 +59,10 @@ term_keyboard term_getInput(float timeout_seconds);
 #ifdef MY_TERM_INPUT_C
 
 #if defined(__linux__)
-#include <sys/select.h>
-#include <sys/time.h>
-#include <termios.h>
-#include <unistd.h>
+  #include <sys/select.h>
+  #include <sys/time.h>
+  #include <termios.h>
+  #include <unistd.h>
 
 static struct termios old;
 
@@ -104,8 +104,8 @@ term_mouse mouse(u8 *buf, u8 len) {
   codeint &= ~16;
   codeint &= ~8;
   return (term_mouse){
-      .row = row,
-      .col = col,
+      .row = row - 1,
+      .col = col - 1,
       .term_mouse_drag = drag,
       .term_mouse_ctrl = ctrl,
       .term_mouse_alt = alt,
@@ -231,7 +231,7 @@ term_keyboard term_getInput(float timeout_seconds) {
 #endif
 
 #if defined(_WIN32)
-#include <windows.h>
+  #include <windows.h>
 
 static DWORD old;
 
@@ -297,34 +297,34 @@ term_keyboard term_getInput(float timeout_seconds) {
     };
 
     switch (mer.dwEventFlags) {
-    case 0: // Button press/release
-      if (mer.dwButtonState & FROM_LEFT_1ST_BUTTON_PRESSED) {
+      case 0: // Button press/release
+        if (mer.dwButtonState & FROM_LEFT_1ST_BUTTON_PRESSED) {
+          res.data.mouse.code.known = term_mouse_left;
+          res.data.mouse.state = term_mouse_down;
+        } else if (mer.dwButtonState & RIGHTMOST_BUTTON_PRESSED) {
+          res.data.mouse.code.known = term_mouse_right;
+          res.data.mouse.state = term_mouse_down;
+        } else if (mer.dwButtonState & FROM_LEFT_2ND_BUTTON_PRESSED) {
+          res.data.mouse.code.known = term_mouse_middle;
+          res.data.mouse.state = term_mouse_down;
+        } else {
+          res.data.mouse.code.known = term_mouse_left;
+          res.data.mouse.state = term_mouse_up;
+        }
+        break;
+      case MOUSE_MOVED:
+        res.data.mouse.code.known = term_mouse_move;
+        res.data.mouse.term_mouse_drag = (mer.dwButtonState != 0);
+        break;
+      case DOUBLE_CLICK:
         res.data.mouse.code.known = term_mouse_left;
         res.data.mouse.state = term_mouse_down;
-      } else if (mer.dwButtonState & RIGHTMOST_BUTTON_PRESSED) {
-        res.data.mouse.code.known = term_mouse_right;
-        res.data.mouse.state = term_mouse_down;
-      } else if (mer.dwButtonState & FROM_LEFT_2ND_BUTTON_PRESSED) {
-        res.data.mouse.code.known = term_mouse_middle;
-        res.data.mouse.state = term_mouse_down;
-      } else {
-        res.data.mouse.code.known = term_mouse_left;
-        res.data.mouse.state = term_mouse_up;
-      }
-      break;
-    case MOUSE_MOVED:
-      res.data.mouse.code.known = term_mouse_move;
-      res.data.mouse.term_mouse_drag = (mer.dwButtonState != 0);
-      break;
-    case DOUBLE_CLICK:
-      res.data.mouse.code.known = term_mouse_left;
-      res.data.mouse.state = term_mouse_down;
-      break;
-    case MOUSE_WHEELED:
-    case MOUSE_HWHEELED:
-      res.data.mouse.code.unknown =
-          64 + (HIWORD(mer.dwButtonState) > 0 ? 0 : 1);
-      break;
+        break;
+      case MOUSE_WHEELED:
+      case MOUSE_HWHEELED:
+        res.data.mouse.code.unknown =
+            64 + (HIWORD(mer.dwButtonState) > 0 ? 0 : 1);
+        break;
     }
     return res;
   }
@@ -355,18 +355,18 @@ term_keyboard term_getInput(float timeout_seconds) {
     res.data.modified.alt = alt;
 
     switch (ker.wVirtualKeyCode) {
-    case VK_UP:
-      res.data.modified.key = 'A';
-      break;
-    case VK_DOWN:
-      res.data.modified.key = 'B';
-      break;
-    case VK_RIGHT:
-      res.data.modified.key = 'C';
-      break;
-    case VK_LEFT:
-      res.data.modified.key = 'D';
-      break;
+      case VK_UP:
+        res.data.modified.key = 'A';
+        break;
+      case VK_DOWN:
+        res.data.modified.key = 'B';
+        break;
+      case VK_RIGHT:
+        res.data.modified.key = 'C';
+        break;
+      case VK_LEFT:
+        res.data.modified.key = 'D';
+        break;
     }
     return res;
   }
@@ -424,71 +424,71 @@ term_keyboard term_getInput(float timeout_seconds) {
 REGISTER_PRINTER(term_keyboard, {
   PUTS(L"{");
   switch (in.kind) {
-  case term_keyboard_raw:
-    PUTS(L"raw:");
-    USETYPEPRINTER(char, (char)in.data.raw);
-    break;
-  case term_keyboard_ctrl:
-    PUTS(L"ctrl:");
-    if (in.data.modified.shift)
-      PUTS(L"S+");
-    if (in.data.modified.alt)
-      PUTS(L"A+");
-    USETYPEPRINTER(char, (char)in.data.modified.key);
-    break;
-  case term_keyboard_alt:
-    PUTS(L"alt:");
-    if (in.data.modified.ctrl)
-      PUTS(L"C+");
-    if (in.data.modified.shift)
-      PUTS(L"S+");
-    USETYPEPRINTER(char, (char)in.data.modified.key);
-    break;
-  case term_keyboard_arrow:
-    PUTS(L"arrow:");
-    if (in.data.modified.ctrl)
-      PUTS(L"C+");
-    if (in.data.modified.shift)
-      PUTS(L"S+");
-    if (in.data.modified.alt)
-      PUTS(L"A+");
-    switch (in.data.arrow) {
-    case term_keyboard_up:
-      PUTS(L"↑");
+    case term_keyboard_raw:
+      PUTS(L"raw:");
+      USETYPEPRINTER(char, (char)in.data.raw);
       break;
-    case term_keyboard_down:
-      PUTS(L"↓");
+    case term_keyboard_ctrl:
+      PUTS(L"ctrl:");
+      if (in.data.modified.shift)
+        PUTS(L"S+");
+      if (in.data.modified.alt)
+        PUTS(L"A+");
+      USETYPEPRINTER(char, (char)in.data.modified.key);
       break;
-    case term_keyboard_left:
-      PUTS(L"←");
+    case term_keyboard_alt:
+      PUTS(L"alt:");
+      if (in.data.modified.ctrl)
+        PUTS(L"C+");
+      if (in.data.modified.shift)
+        PUTS(L"S+");
+      USETYPEPRINTER(char, (char)in.data.modified.key);
       break;
-    case term_keyboard_right:
-      PUTS(L"→");
+    case term_keyboard_arrow:
+      PUTS(L"arrow:");
+      if (in.data.modified.ctrl)
+        PUTS(L"C+");
+      if (in.data.modified.shift)
+        PUTS(L"S+");
+      if (in.data.modified.alt)
+        PUTS(L"A+");
+      switch (in.data.arrow) {
+        case term_keyboard_up:
+          PUTS(L"↑");
+          break;
+        case term_keyboard_down:
+          PUTS(L"↓");
+          break;
+        case term_keyboard_left:
+          PUTS(L"←");
+          break;
+        case term_keyboard_right:
+          PUTS(L"→");
+          break;
+        case term_keyboard_home:
+          PUTS(L"Home");
+          break;
+        case term_keyboard_end:
+          PUTS(L"End");
+          break;
+        default:
+          USETYPEPRINTER(char, (char)in.data.arrow);
+      }
       break;
-    case term_keyboard_home:
-      PUTS(L"Home");
+    case term_keyboard_function:
+      PUTS(L"F");
+      USETYPEPRINTER(int, in.data.function_key);
       break;
-    case term_keyboard_end:
-      PUTS(L"End");
+    case term_keyboard_mouse:
+      PUTS(L"mouse:");
+      USENAMEDPRINTER("term_mouse", in.data.mouse);
       break;
-    default:
-      USETYPEPRINTER(char, (char)in.data.arrow);
-    }
-    break;
-  case term_keyboard_function:
-    PUTS(L"F");
-    USETYPEPRINTER(int, in.data.function_key);
-    break;
-  case term_keyboard_mouse:
-    PUTS(L"mouse:");
-    USENAMEDPRINTER("term_mouse", in.data.mouse);
-    break;
-  case term_keyboard_none:
-    PUTS(L"none");
-    break;
-  case term_keyboard_unknown:
-    PUTS(L"unknown");
-    break;
+    case term_keyboard_none:
+      PUTS(L"none");
+      break;
+    case term_keyboard_unknown:
+      PUTS(L"unknown");
+      break;
   }
   PUTS(L"}");
 });
@@ -502,30 +502,30 @@ REGISTER_PRINTER(term_mouse, {
   PUTS(L")");
   PUTS(L",");
   switch (in.code.unknown) {
-  case term_mouse_left:
-    PUTS(L"left");
-    break;
-  case term_mouse_middle:
-    PUTS(L"middle");
-    break;
-  case term_mouse_right:
-    PUTS(L"right");
-    break;
-  case term_mouse_move:
-    PUTS(L"move");
-    break;
-  default:
-    PUTS(L"unknown(");
-    USETYPEPRINTER(int, in.code.unknown);
-    PUTS(L")");
+    case term_mouse_left:
+      PUTS(L"left");
+      break;
+    case term_mouse_middle:
+      PUTS(L"middle");
+      break;
+    case term_mouse_right:
+      PUTS(L"right");
+      break;
+    case term_mouse_move:
+      PUTS(L"move");
+      break;
+    default:
+      PUTS(L"unknown(");
+      USETYPEPRINTER(int, in.code.unknown);
+      PUTS(L")");
   }
   PUTS(L",");
   switch (in.state) {
-  case term_mouse_up:
-    PUTS(L"up");
-    break;
-  default:
-    PUTS(L"down");
+    case term_mouse_up:
+      PUTS(L"up");
+      break;
+    default:
+      PUTS(L"down");
   }
   PUTS(L"(");
   if (in.term_mouse_alt)

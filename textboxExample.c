@@ -1,4 +1,5 @@
-#include <string.h>
+#include "wheels/fptr.h"
+#include <wchar.h>
 #define LIST_NOCHECKS
 
 #define MY_TERM_ELEMENTS_C
@@ -11,15 +12,48 @@
 #include "wheels/print.h"
 #include "wheels/wheels.h"
 
-struct textBox_userData {
+// doesnt own allocator, keep track
+typedef struct LinkedList {
+  wchar *characters;
+  u32 length;
+  struct LinkedList *prev;
+  struct LinkedList *next;
+} LinkedList;
+LinkedList *LinkedList_insertNewElement(const My_allocator *allocator, LinkedList *next, LinkedList *prev) {
+  LinkedList *res = (LinkedList *)aAlloc(allocator, sizeof(LinkedList));
+  *res = (LinkedList){
+      .next = next,
+      .prev = prev,
+  };
+  if (next)
+    next->prev = res;
+  if (prev)
+    prev->next = res;
+  return res;
+}
+void LinkedList_removeElement(const My_allocator *allocator, LinkedList *el) {
+  el->next->prev = el->prev;
+  el->prev->next = el->next;
+  aFree(allocator, el);
+}
+wchar LinkedList_getFromInnerList(LinkedList *el, u32 idx) {
+  if (!el)
+    return 0;
+  if (idx > el->length)
+    return 0;
+  return el->characters[idx];
+}
+struct textBox {
   term_cell defaultCell;
+
   term_position position;
   term_position size;
-  u8 *text;
-  List *cells;
-  List *positions;
+
+  LinkedList *currentLinePlace;
+  i32 currentCol;
+  i32 currentLine;
 };
-void draw_box_around(List *cells, List *positions, term_position topLeft, int width, int height, term_cell defaultCell, wchar_t tl, wchar_t tr, wchar_t bl, wchar_t br, wchar_t hor, wchar_t ver) {
+void draw_box_around(term_position topLeft, int width, int height, term_cell defaultCell, wchar_t tl, wchar_t tr, wchar_t bl, wchar_t br, wchar_t hor, wchar_t ver) {
   topLeft.col--;
   topLeft.row--;
   width += 2;
@@ -36,11 +70,9 @@ void draw_box_around(List *cells, List *positions, term_position topLeft, int wi
     else
       cell.c = hor;
 
-    List_append(cells, &cell);
-    List_append(positions, &pos);
+    term_setCell(pos, cell);
   }
 
-  // Vertical borders
   for (int row = 1; row < height - 1; row++) {
     for (int col = 0; col < width; col++) {
       term_cell cell = defaultCell;
@@ -53,14 +85,12 @@ void draw_box_around(List *cells, List *positions, term_position topLeft, int wi
       else if (col == width - 1)
         cell.c = ver;
       else
-        continue; // leave inner cells untouched
+        continue;
 
-      List_append(cells, &cell);
-      List_append(positions, &pos);
+      term_setCell(pos, cell);
     }
   }
 
-  // Bottom border
   for (int col = 0; col < width; col++) {
     term_cell cell = defaultCell;
     term_position pos = topLeft;
@@ -74,126 +104,169 @@ void draw_box_around(List *cells, List *positions, term_position topLeft, int wi
     else
       cell.c = hor;
 
-    List_append(cells, &cell);
-    List_append(positions, &pos);
+    term_setCell(pos, cell);
   }
 }
 
-term_element_slice textBox_render(term_element *elptr, const term_keyboard *inputstate) {
-  struct textBox_userData *selfptr = (struct textBox_userData *)elptr->arb;
-
-  selfptr->cells->length = 0;
-  selfptr->positions->length = 0;
-
-  for (int i = 0; i < selfptr->size.col && selfptr->text[i]; i++) {
-    term_cell thiscell = selfptr->defaultCell;
-    term_position thispos = selfptr->position;
-
-    thiscell.c = (wchar)(selfptr->text[i]);
-    thispos.col += i;
-
-    List_append(selfptr->cells, &thiscell);
-    List_append(selfptr->positions, &thispos);
+bool within(term_position position, term_position size, term_position point) {
+  if (!size.row)
+    return false;
+  if (!size.col)
+    return false;
+  if (point.row < position.row)
+    return false;
+  if (point.row > position.row + size.row - 1)
+    return false;
+  if (point.col < position.col)
+    return false;
+  if (point.col > position.col + size.col - 1)
+    return false;
+  return true;
+}
+void textbox_renderFn(term_element *selfElementPtr, const term_keyboard *lastInput) {
+  struct textBox *selfptr = (struct textBox *)selfElementPtr->arb;
+  if (lastInput->kind == term_keyboard_arrow) {
+    switch (lastInput->data.arrow) {
+      case term_keyboard_right:
+        selfptr->currentCol += 2;
+        break;
+      case term_keyboard_left:
+        selfptr->currentCol -= 2;
+        break;
+      case term_keyboard_down:
+        selfptr->currentLine -= 2;
+        break;
+      case term_keyboard_up:
+        selfptr->currentLine += 2;
+        break;
+    }
   }
   draw_box_around(
-      selfptr->cells,
-      selfptr->positions,
       selfptr->position,
       selfptr->size.col,
       selfptr->size.row,
       selfptr->defaultCell,
-      L'┌', L'┐', L'└', L'┘', L'─', L'│'
+      L'╭', L'╮', L'╰', L'╯', L'─', L'│'
   );
 
-  return ((term_element_slice){
-      selfptr->cells->length,
-      (term_cell *)selfptr->cells->head,
-      (term_position *)selfptr->positions->head
-  });
-}
-term_element_slice textBox_render_track(term_element *elptr, const term_keyboard *inputstate) {
-  struct textBox_userData *selfptr = (struct textBox_userData *)elptr->arb;
-  if (inputstate->kind == term_keyboard_mouse) {
-    selfptr->position.col = inputstate->data.mouse.col;
-    selfptr->position.row = inputstate->data.mouse.row;
-    selfptr->defaultCell.inverse =
-        (inputstate->data.mouse.code.known == term_mouse_left &&
-         inputstate->data.mouse.state == term_mouse_down);
+  LinkedList *start = selfptr->currentLinePlace;
+  if ((i32)selfptr->currentLine >= 0 && (i32)selfptr->currentLine < (i32)selfptr->size.row) {
+    for (u32 j = 0; j < selfptr->size.col; j++) {
+      term_cell l = selfptr->defaultCell;
+      i32 diff = (i32)j + (i32)selfptr->currentCol;
+      l.c = start ? LinkedList_getFromInnerList(start, diff) : l.c;
+      term_position pdiff = selfptr->position;
+      pdiff.row += selfptr->currentLine;
+      pdiff.col += j;
+      term_setCell(pdiff, l);
+    }
   }
-  return textBox_render(elptr, inputstate);
-}
-term_element *textBox_newElement(u8 *text, u32 row, u32 col, term_color fg, term_color bg) {
-  term_element *res = (term_element *)aAlloc(defaultAlloc, sizeof(term_element));
-  struct textBox_userData *ud =
-      (struct textBox_userData *)aAlloc(defaultAlloc, sizeof(struct textBox_userData));
-  *ud = (struct textBox_userData){
-      .defaultCell = (term_cell){
-          L' ',
-          fg, bg,
-          0, 0, 0, 1, 0, 0, 1
-      },
-      .position = {row, col},
-      .size = {1, strlen((char *)text)},
-      .cells = mList(defaultAlloc, term_cell),
-      .positions = mList(defaultAlloc, term_position),
-      .text = text,
-  };
-  *res = (term_element){
-      .arb = ud,
-      .render = textBox_render,
-  };
-  return res;
-}
-term_element *textBox_newElement_track(u8 *text, u32 row, u32 col, term_color fg, term_color bg) {
-  term_element *res = (term_element *)aAlloc(defaultAlloc, sizeof(term_element));
-  struct textBox_userData *ud =
-      (struct textBox_userData *)aAlloc(defaultAlloc, sizeof(struct textBox_userData));
-  *ud = (struct textBox_userData){
-      .defaultCell = (term_cell){
-          L' ',
-          fg, bg,
-          0, 0, 0, 1, 0, 0, 1
-      },
-      .position = {row, col},
-      .size = {1, strlen((char *)text)},
-      .cells = mList(defaultAlloc, term_cell),
-      .positions = mList(defaultAlloc, term_position),
-      .text = text,
-  };
-  *res = (term_element){
-      .arb = ud,
-      .render = textBox_render_track,
-  };
-  return res;
-}
-
-#include <time.h>
-extern int nanosleep(const struct timespec *request, struct timespec *remain);
-
-int main(int argc, char *argv[]) {
-  add_element(
-      textBox_newElement(
-          (u8 *)"hello world test\n",
-          1, 1, term_color_fromIdx(10),
-          term_color_fromIdx(15)
-      )
-  );
-  add_element(
-      textBox_newElement(
-          (u8 *)"hello world",
-          10, 12, term_color_fromHex(0xffff77),
-          term_color_fromHex(0xff00ff)
-      )
-  );
-  add_element(
-      textBox_newElement_track(
-          (u8 *)"sticky",
-          11, 30, term_color_fromHex(0x6767ff),
-          term_color_fromHex(0x00ffff)
-      )
-  );
-  while (1) {
-    term_renderElements(term_getInput(1));
-    nanosleep(&(struct timespec){0, 10000000}, NULL);
+  {
+    LinkedList *place = start ? start->prev : NULL;
+    for (i32 i = (i32)selfptr->currentLine - 1; i >= 0; i--) {
+      if (i < (i32)selfptr->size.row) {
+        for (u32 j = 0; j < selfptr->size.col; j++) {
+          term_cell l = selfptr->defaultCell;
+          i32 diff = (i32)j + (i32)selfptr->currentCol;
+          l.c = place ? LinkedList_getFromInnerList(place, diff) : l.c;
+          term_position pdiff = selfptr->position;
+          pdiff.row += i;
+          pdiff.col += j;
+          term_setCell(pdiff, l);
+        }
+      }
+      place = place ? place->prev : NULL;
+    }
   }
+  {
+    LinkedList *place = start ? start->next : NULL;
+    for (i32 i = (i32)selfptr->currentLine + 1; i < (i32)selfptr->size.row; i++) {
+      if (i >= 0) {
+        for (u32 j = 0; j < selfptr->size.col; j++) {
+          term_cell l = selfptr->defaultCell;
+          i32 diff = (i32)j + (i32)selfptr->currentCol;
+          l.c = place ? LinkedList_getFromInnerList(place, diff) : l.c;
+          term_position pdiff = selfptr->position;
+          pdiff.row += i;
+          pdiff.col += j;
+          term_setCell(pdiff, l);
+        }
+      }
+      place = place ? place->next : NULL;
+    }
+  }
+}
+LinkedList *fromParagraph(const wchar_t *paragraph, const My_allocator *alloc) {
+  if (paragraph == NULL || wcslen(paragraph) == 0) {
+    return NULL;
+  }
+  LinkedList *head = NULL;
+  LinkedList *current = NULL;
+
+  size_t len = wcslen(paragraph);
+  size_t lineStart = 0;
+
+  for (size_t i = 0; i <= len; i++) {
+    if (i == len || paragraph[i] == L'\n') {
+      size_t lineLen = i - lineStart;
+
+      if (lineLen == 0) {
+        lineStart = i + 1;
+        continue;
+      }
+
+      if (head == NULL) {
+        head = LinkedList_insertNewElement(alloc, NULL, NULL);
+        current = head;
+      } else {
+        current = LinkedList_insertNewElement(alloc, NULL, current);
+      }
+
+      current->characters = (wchar_t *)&paragraph[lineStart];
+      current->length = lineLen - 1;
+
+      lineStart = i + 1;
+    }
+  }
+
+  return head->next;
+}
+LinkedList *testText(void) {
+  return fromParagraph(
+      // clang-format off
+L"hello\n"
+ "  world\n\n"
+ "how do you do raw string \n"
+ "  literals for wchars?"
+      // clang-format on
+      ,
+      defaultAlloc
+  );
+}
+term_element *textBox_newElement(const My_allocator *allocator) {
+  term_element *selfptr = (term_element *)aAlloc(allocator, sizeof(term_element));
+  struct textBox *userData = (struct textBox *)aAlloc(allocator, sizeof(struct textBox));
+
+  *userData = (struct textBox){
+      .defaultCell = (term_cell){
+          0,
+          term_color_fromIdx(0), term_color_fromIdx(255),
+          0, 0, 0, 0, 0, 0, 1
+      },
+      .currentLinePlace = testText(),
+      .position = {5, 5},
+      .currentLine = 0,
+      .currentCol = 0,
+      .size = {20, 40},
+  };
+  *selfptr = (term_element){
+      .arb = userData,
+      .render = textbox_renderFn,
+  };
+  return selfptr;
+}
+int main() {
+  add_element(textBox_newElement(defaultAlloc));
+  while (1)
+    term_renderElements(term_getInput(.01));
 }

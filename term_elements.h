@@ -4,12 +4,7 @@
 #include "term_screen.h"
 // object based element system
 typedef struct term_element term_element;
-typedef struct {
-  u32 len;
-  struct term_cell *cells;
-  struct term_position *positions;
-} term_element_slice;
-typedef term_element_slice (*render_term_element)(term_element *, const term_keyboard *);
+typedef void (*render_term_element)(term_element *, const term_keyboard *);
 typedef struct term_element {
   void *arb;
   render_term_element render;
@@ -44,9 +39,7 @@ void term_renderElements(term_keyboard input) {
       i--;
       break;
     }
-    term_element_slice cells = ((*elem)->render(*elem, &input));
-    for (u32 i = 0; i < cells.len; i++)
-      term_setCell(cells.positions[i], cells.cells[i]);
+    ((*elem)->render(*elem, &input));
   }
   term_render();
 }

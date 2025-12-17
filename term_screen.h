@@ -105,7 +105,7 @@ struct term_position get_terminal_size() {
 }
 
 int wwidth(wchar wc) {
-  #pragma message "wide witdth on windows "
+  #pragma message "wide witdth on windows not implemented"
   return 1;
 }
 #elif defined(__linux__)
@@ -142,23 +142,26 @@ static bool justdumped = false;
 #ifdef _WIN32
   #include <io.h>
 #endif
+#include <time.h>
+extern int nanosleep(const struct timespec *request, struct timespec *remain);
 void convertwrite(wchar_t *data, usize len) {
-  static usize writeMax = 0;
   static char *u8data = NULL;
-  static usize u8dataCapacity = 0;
+  static usize u8cap = 0;
 
   usize bufSize = lineup(len * MB_CUR_MAX, 4096);
 
-  if (bufSize > u8dataCapacity) {
+  if (bufSize > u8cap) {
     if (u8data)
-      u8data = (char *)aRealloc(defaultAlloc, u8data, bufSize);
-    else
-      u8data = (char *)aAlloc(defaultAlloc, bufSize);
-    u8dataCapacity = bufSize;
+      aFree(defaultAlloc, u8data);
+    u8data = (char *)aAlloc(defaultAlloc, bufSize);
+    u8cap = bufSize;
+    print_wfO(fileprint, globalLog, "maxwrite: {}\n", u8cap);
+    print_wfO(fileprint, globalLog, "hmap size: {}\n", HHMap_footprint(back_buffer));
   }
 
-  usize wlen = 0;
   mbstate_t mbs = {0};
+  usize wlen = 0;
+  size_t n;
   for (usize i = 0; i < len; i++) {
     size_t n = wcrtomb(u8data + wlen, data[i], &mbs);
     assertMessage(n != ((size_t)-1), "wcrtomb failed?");
@@ -170,12 +173,9 @@ void convertwrite(wchar_t *data, usize len) {
 #else
   _write(_fileno(stdout), u8data, wlen);
 #endif
-
-  if (wlen > writeMax) {
-    writeMax = wlen;
-    print_wfO(fileprint, globalLog, "maxwrite: {}\n", writeMax);
-    print_wfO(fileprint, globalLog, "hmap size: {}\n", HHMap_footprint(back_buffer));
-  }
+  // unbuffered
+  // fflush(stdout);
+  nanosleep(&(struct timespec){0, 1000}, NULL);
 }
 static_assert(sizeof(term_position) == sizeof(term_cell), "add alignment handling ");
 [[gnu::constructor]] void term_setup(void) {
@@ -187,6 +187,7 @@ static_assert(sizeof(term_position) == sizeof(term_cell), "add alignment handlin
       defaultAlloc,
       r * c * 5
   );
+  setvbuf(stdout, NULL, _IONBF, 0);
   globalLog = fopen("tui.log", "a");
 }
 [[gnu::destructor]] void term_cleanup(void) {
@@ -231,42 +232,42 @@ void term_setCell_LL(i32 row, i32 col, wchar character, u8 fgr, u8 fgg, u8 fgb, 
 void list_addfgColor(List *printList, struct term_color fg) {
   typeof(fg) currentfg = fg;
   switch (currentfg.tag) {
-  case term_color_idx: {
-    List_resize(printList, printList->length + 64);
-    printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[38;5;%dm", (int)currentfg.color.colorIDX);
-  } break;
-  case term_color_full: {
-    List_resize(printList, printList->length + 64);
-    printList->length += swprintf(
-        (wchar *)List_getRefForce(printList, printList->length),
-        64,
-        L"\033[38;2;%d;%d;%dm",
-        (int)currentfg.color.r,
-        (int)currentfg.color.g,
-        (int)currentfg.color.b
-    );
-  } break;
-  default: {
-    List_resize(printList, printList->length + 64);
-    printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[39m");
-  } break;
+    case term_color_idx: {
+      List_resize(printList, printList->length + 64);
+      printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[38;5;%dm", (int)currentfg.color.colorIDX);
+    } break;
+    case term_color_full: {
+      List_resize(printList, printList->length + 64);
+      printList->length += swprintf(
+          (wchar *)List_getRefForce(printList, printList->length),
+          64,
+          L"\033[38;2;%d;%d;%dm",
+          (int)currentfg.color.r,
+          (int)currentfg.color.g,
+          (int)currentfg.color.b
+      );
+    } break;
+    default: {
+      List_resize(printList, printList->length + 64);
+      printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[39m");
+    } break;
   }
 }
 void list_addbgColor(List *printList, struct term_color bg) {
   typeof(bg) currentbg = bg;
   switch (currentbg.tag) {
-  case term_color_idx: {
-    List_resize(printList, printList->length + 64);
-    printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[48;5;%dm", (int)currentbg.color.colorIDX);
-  } break;
-  case term_color_full: {
-    List_resize(printList, printList->length + 64);
-    printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[48;2;%d;%d;%dm", (int)currentbg.color.r, (int)currentbg.color.g, (int)currentbg.color.b);
-  } break;
-  default: {
-    List_resize(printList, printList->length + 64);
-    printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[49m");
-  } break;
+    case term_color_idx: {
+      List_resize(printList, printList->length + 64);
+      printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[48;5;%dm", (int)currentbg.color.colorIDX);
+    } break;
+    case term_color_full: {
+      List_resize(printList, printList->length + 64);
+      printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[48;2;%d;%d;%dm", (int)currentbg.color.r, (int)currentbg.color.g, (int)currentbg.color.b);
+    } break;
+    default: {
+      List_resize(printList, printList->length + 64);
+      printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[49m");
+    } break;
   }
 }
 bool styleeq(term_cell a, term_cell b) {
@@ -278,7 +279,7 @@ bool styleeq(term_cell a, term_cell b) {
       a.strikethrough == b.strikethrough
   );
 }
-void List_addStyle(List *l, term_cell c) {
+void L_addStyle(List *l, term_cell c) {
   bool hasStyle = false;
   if (c.bold) {
     List_appendFromArr(l, L"\033[1m", 4);
@@ -357,7 +358,7 @@ void term_render(void) {
           currentfg = t;
         }
         if (!styleeq(lastCel, *cell)) {
-          List_addStyle(printList, *cell);
+          L_addStyle(printList, *cell);
           lastCel = *cell;
         }
         if (!coloreq(currentbg, lastbg) || !coloreq(currentfg, lastfg)) {
@@ -373,8 +374,6 @@ void term_render(void) {
     }
   }
   convertwrite((wchar *)printList->head, printList->length);
-
-  fflush(stdout);
   printList->length = 0;
   last = recent;
 }
