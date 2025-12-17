@@ -6,7 +6,6 @@
 #include <assert.h>
 #include <stdio.h>
 
-// data is unusable as wchar after
 typedef struct term_position {
   i64 row, col;
 } term_position;
@@ -50,11 +49,11 @@ typedef struct term_cell {
   struct term_color bg;
   struct term_color fg;
   // clang-format off
-  bool bold          : 1;//TODO
-  bool italic        : 1;//TODO
-  bool underline     : 1;//TODO
-  bool blinking      : 1;//TODO
-  bool strikethrough : 1;//TODO
+  bool bold          : 1;
+  bool italic        : 1;
+  bool underline     : 1;
+  bool blinking      : 1;
+  bool strikethrough : 1;
   bool inverse       : 1;
   bool visible       : 1;
   // clang-format on
@@ -127,6 +126,7 @@ static bool justdumped = false;
 static FILE *globalLog = NULL;
 
 void convertwrite(wchar_t *data, usize len) {
+  assertOnce(MB_CUR_MAX > sizeof(wchar_t));
   static usize writeMax = 0;
   usize wlen = 0;
 
@@ -249,6 +249,41 @@ void list_addbgColor(List *printList, struct term_color bg) {
   } break;
   }
 }
+bool styleeq(term_cell a, term_cell b) {
+  return (
+      a.bold == b.bold &&
+      a.italic == b.italic &&
+      a.underline == b.underline &&
+      a.blinking == b.blinking &&
+      a.strikethrough == b.strikethrough
+  );
+}
+void List_addStyle(List *l, term_cell c) {
+  bool hasStyle = false;
+  if (c.bold) {
+    List_appendFromArr(l, L"\033[1m", 4);
+    hasStyle = true;
+  }
+  if (c.italic) {
+    List_appendFromArr(l, L"\033[3m", 4);
+    hasStyle = true;
+  }
+  if (c.underline) {
+    List_appendFromArr(l, L"\033[4m", 4);
+    hasStyle = true;
+  }
+  if (c.blinking) {
+    List_appendFromArr(l, L"\033[5m", 4);
+    hasStyle = true;
+  }
+  if (c.strikethrough) {
+    List_appendFromArr(l, L"\033[9m", 4);
+    hasStyle = true;
+  }
+  if (!hasStyle) {
+    List_appendFromArr(l, L"\033[0m", 4);
+  }
+}
 void term_render(void) {
   static struct term_position last = {0, 0};
   struct term_position recent = get_terminal_size();
@@ -259,7 +294,7 @@ void term_render(void) {
     printList = List_new(defaultAlloc, sizeof(wchar));
 
   if (recent.row != last.row || recent.col != last.col) {
-    List_appendFromArr(printList, L"\033[0m\033[2J", 9);
+    List_appendFromArr(printList, L"\033[0m\033[2J", 8);
 
     print_wfO(
         fileprint,
@@ -270,9 +305,9 @@ void term_render(void) {
     );
   }
 
-  List_appendFromArr(printList, L"\033[3J", 5);
+  List_appendFromArr(printList, L"\033[3J", 4);
   if (justdumped) {
-    List_appendFromArr(printList, L"\033[0m\033[2J", 9);
+    List_appendFromArr(printList, L"\033[0m\033[2J", 8);
     justdumped = false;
   }
 
@@ -281,11 +316,12 @@ void term_render(void) {
   for (u32 i = 0; i < HHMap_getMetaSize(back_buffer); i++) {
     for (u32 j = 0; j < HHMap_getBucketSize(back_buffer, i); j++) {
       void *it = HHMap_getCoord(back_buffer, i, j);
-      struct term_position *position = (struct term_position *)it;
-      struct term_cell *cell = (struct term_cell *)((u8 *)it + sizeof(struct term_position));
+      term_position *position = (struct term_position *)it;
+      term_cell *cell = (struct term_cell *)((u8 *)it + sizeof(struct term_position));
 
-      struct term_color currentbg = cell->bg;
-      struct term_color currentfg = cell->fg;
+      term_color currentbg = cell->bg;
+      term_color currentfg = cell->fg;
+      term_cell lastCell = {0};
 
       if (cell->visible && position->col < recent.col && position->row < recent.row && position->row > -1 && position->col > -1) {
         List_resize(printList, printList->length + 64);
@@ -296,27 +332,19 @@ void term_render(void) {
           currentbg = currentfg;
           currentfg = t;
         }
-        if (cell->bold)
-          List_appendFromArr(printList, L"\033[1m", 5);
-        if (cell->italic)
-          List_appendFromArr(printList, L"\033[3m", 5);
-        if (cell->underline)
-          List_appendFromArr(printList, L"\033[4m", 5);
-        if (cell->blinking)
-          List_appendFromArr(printList, L"\033[5m", 5);
-        if (cell->strikethrough)
-          List_appendFromArr(printList, L"\033[9m", 5);
+        if (!styleeq(lastCell, *cell)) {
+          List_addStyle(printList, *cell);
+          lastCell = *cell;
+        }
         if (!coloreq(currentbg, lastbg) || !coloreq(currentfg, lastfg)) {
           list_addfgColor(printList, currentfg);
           list_addbgColor(printList, currentbg);
+          lastbg = currentbg;
+          lastfg = currentfg;
         }
         wchar_t wc = cell->c ? cell->c : L' ';
         List_append(printList, &wc);
-        List_appendFromArr(printList, L"\033[0m", 5);
       }
-
-      lastbg = currentbg;
-      lastfg = currentfg;
     }
   }
   convertwrite((wchar *)printList->head, printList->length);
