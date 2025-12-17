@@ -1,3 +1,5 @@
 .gdb_history
 tui.log
 atui
+.zig-cache
+zig-out/bin

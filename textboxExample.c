@@ -1,4 +1,5 @@
 #include <string.h>
+#include <threads.h>
 #define LIST_NOCHECKS
 
 #define MY_TERM_ELEMENTS_C
@@ -10,11 +11,6 @@
 
 #include "wheels/print.h"
 #include "wheels/wheels.h"
-
-#ifdef _WIN32
-extern int nanosleep(const struct timespec *request, struct timespec *remain);
-#endif
-#include <time.h>
 
 struct textBox_userData {
   term_cell defaultCell;
@@ -172,10 +168,13 @@ term_element *textBox_newElement_track(u8 *text, u32 row, u32 col, term_color fg
   return res;
 }
 
+#include <time.h>
+extern int nanosleep(const struct timespec *request, struct timespec *remain);
+
 int main(int argc, char *argv[]) {
   add_element(
       textBox_newElement(
-          (u8 *)"hello world test",
+          (u8 *)"hello world test\n",
           1, 1, term_color_fromIdx(10),
           term_color_fromIdx(15)
       )

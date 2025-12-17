@@ -5,6 +5,8 @@
 #include "wheels/types.h"
 #include <assert.h>
 #include <stdio.h>
+#include <wchar.h>
+#include <wctype.h>
 
 typedef struct term_position {
   i64 row, col;
@@ -26,18 +28,18 @@ typedef struct term_color {
 
 static inline term_color term_color_fromHex(u32 hex) {
   return (term_color){
-      .tag = term_color_full,
       .color = {
           .r = (u8)((hex & 0xff0000) >> 0x10),
           .g = (u8)((hex & 0x00ff00) >> 0x08),
           .b = (u8)((hex & 0x0000ff) >> 0x00),
-      }
+      },
+      .tag = term_color_full,
   };
 }
 static inline term_color term_color_fromIdx(u8 hex) {
   return (term_color){
+      .color = {.colorIDX = hex},
       .tag = term_color_idx,
-      .color.colorIDX = hex
   };
 };
 static inline term_color term_color_default() {
@@ -317,8 +319,9 @@ void term_render(void) {
     justdumped = false;
   }
 
-  struct term_color lastbg = {0};
-  struct term_color lastfg = {0};
+  term_color lastbg = {0};
+  term_color lastfg = {0};
+  term_cell lastCel = {0};
   for (u32 i = 0; i < HHMap_getMetaSize(back_buffer); i++) {
     for (u32 j = 0; j < HHMap_getBucketSize(back_buffer, i); j++) {
       void *it = HHMap_getCoord(back_buffer, i, j);
@@ -327,9 +330,12 @@ void term_render(void) {
 
       term_color currentbg = cell->bg;
       term_color currentfg = cell->fg;
-      term_cell lastCell = {0};
 
-      if (cell->visible && position->col < recent.col && position->row < recent.row && position->row > -1 && position->col > -1) {
+      if (
+          cell->visible &&
+          position->col < recent.col && position->row < recent.row &&
+          position->row > -1 && position->col > -1
+      ) {
         List_resize(printList, printList->length + 64);
         printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[%d;%dH", position->row + 1, position->col + 1);
 
@@ -338,9 +344,9 @@ void term_render(void) {
           currentbg = currentfg;
           currentfg = t;
         }
-        if (!styleeq(lastCell, *cell)) {
+        if (!styleeq(lastCel, *cell)) {
           List_addStyle(printList, *cell);
-          lastCell = *cell;
+          lastCel = *cell;
         }
         if (!coloreq(currentbg, lastbg) || !coloreq(currentfg, lastfg)) {
           list_addfgColor(printList, currentfg);
@@ -348,7 +354,8 @@ void term_render(void) {
           lastbg = currentbg;
           lastfg = currentfg;
         }
-        wchar_t wc = cell->c ? cell->c : L' ';
+        // TODO move char check to setcell
+        wchar_t wc = cell->c && iswprint(cell->c) && wcwidth(cell->c) == 1 ? cell->c : L' ';
         List_append(printList, &wc);
       }
     }
