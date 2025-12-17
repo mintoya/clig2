@@ -44,7 +44,7 @@ static inline term_color term_color_default() {
   return (term_color){.tag = term_color_def};
 }
 
-typedef struct term_cell {
+typedef struct __attribute__((aligned(16))) term_cell {
   wchar c;
   struct term_color bg;
   struct term_color fg;
@@ -125,36 +125,42 @@ static HHMap *back_buffer = NULL;
 static bool justdumped = false;
 static FILE *globalLog = NULL;
 
+#ifdef _WIN32
+  #include <io.h>
+#endif
 void convertwrite(wchar_t *data, usize len) {
-  assertOnce(MB_CUR_MAX > sizeof(wchar_t));
   static usize writeMax = 0;
-  usize wlen = 0;
+  static char *u8data = NULL;
+  static usize u8dataCapacity = 0;
 
+  usize bufSize = lineup(len * MB_CUR_MAX, 4096);
+
+  if (bufSize > u8dataCapacity) {
+    if (u8data)
+      u8data = (char *)aRealloc(defaultAlloc, u8data, bufSize);
+    else
+      u8data = (char *)aAlloc(defaultAlloc, bufSize);
+    u8dataCapacity = bufSize;
+  }
+
+  usize wlen = 0;
   mbstate_t mbs = {0};
-  for (int i = 0; i < len; i++) {
-    wlen += wcrtomb(((char *)data) + wlen, data[i], &mbs);
+  for (usize i = 0; i < len; i++) {
+    size_t n = wcrtomb(u8data + wlen, data[i], &mbs);
+    assertMessage(n != ((size_t)-1), "wcrtomb failed?");
+    wlen += n;
   }
 
 #if defined(__linux__)
-  write(STDOUT_FILENO, ((char *)data), wlen);
+  write(STDOUT_FILENO, u8data, wlen);
 #else
-  fwrite(data, sizeof(char), wlen, stdout);
+  _write(_fileno(stdout), u8data, wlen);
 #endif
 
   if (wlen > writeMax) {
     writeMax = wlen;
-    print_wfO(
-        fileprint,
-        globalLog,
-        "maxwrite: {}\n",
-        writeMax
-    );
-    print_wfO(
-        fileprint,
-        globalLog,
-        "hmap size: {}\n",
-        HHMap_footprint(back_buffer)
-    );
+    print_wfO(fileprint, globalLog, "maxwrite: {}\n", writeMax);
+    print_wfO(fileprint, globalLog, "hmap size: {}\n", HHMap_footprint(back_buffer));
   }
 }
 static_assert(sizeof(term_position) == sizeof(term_cell), "add alignment handling ");
