@@ -12,14 +12,25 @@ pub fn build(b: *std.Build) void {
         }),
     });
     exe.linkLibC();
-    exe.addCSourceFile(.{
-        .file = b.path("textboxExample.c"),
-        .flags = &.{
-            "-g",
-            "-D_XOPEN_SOURCE",
-            // "-D_XOPEN_SOURCE=700",
-        },
-    });
+    if (target.result.os.tag != .windows) {
+        exe.addCSourceFile(.{
+            .file = b.path("textboxExample.c"),
+            .flags = &.{
+                "-g",
+                "-w",
+            },
+        });
+    } else {
+        exe.addCSourceFile(.{
+            .file = b.path("textboxExample.c"),
+            .flags = &.{
+                "-g",
+                "-w",
+                "-D_XOPEN_SOURCE=700",
+                // "-D_POSIX_C_SOURCE=200809L",
+            },
+        });
+    }
 
     b.installArtifact(exe);
 

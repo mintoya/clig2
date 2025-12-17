@@ -1,5 +1,4 @@
 #include <string.h>
-#include <threads.h>
 #define LIST_NOCHECKS
 
 #define MY_TERM_ELEMENTS_C

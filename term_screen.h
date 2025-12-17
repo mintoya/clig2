@@ -8,6 +8,7 @@
 #include <wchar.h>
 #include <wctype.h>
 
+static FILE *globalLog = NULL;
 typedef struct term_position {
   i64 row, col;
 } term_position;
@@ -81,6 +82,9 @@ struct term_position get_terminal_size(void);
 #define MY_TUI_C
 #endif
 #ifdef MY_TUI_C
+
+#include "wheels/print.h"
+
 #if defined(_WIN32)
   #include <windows.h>
 struct term_position get_terminal_size() {
@@ -98,6 +102,11 @@ struct term_position get_terminal_size() {
   #include <io.h>
 [[gnu::constructor]] void rawConsoleSetup() {
   _setmode(_fileno(stdout), _O_BINARY);
+}
+
+int wwidth(wchar wc) {
+  #pragma message "wide witdth on windows "
+  return 1;
 }
 #elif defined(__linux__)
   #include <sys/ioctl.h>
@@ -117,15 +126,18 @@ struct term_position get_terminal_size() {
 
   return size;
 }
+int wwidth(wchar wc) {
+  if (!iswprint(cell->c))
+    return 0;
+  return wcwidth(wc);
+}
 #else
   #error "platform not supported"
 #endif
 
 #include "wheels/hhmap.h"
-#include "wheels/print.h"
 static HHMap *back_buffer = NULL;
 static bool justdumped = false;
-static FILE *globalLog = NULL;
 
 #ifdef _WIN32
   #include <io.h>
@@ -355,7 +367,7 @@ void term_render(void) {
           lastfg = currentfg;
         }
         // TODO move char check to setcell
-        wchar_t wc = cell->c && iswprint(cell->c) && wcwidth(cell->c) == 1 ? cell->c : L' ';
+        wchar_t wc = cell->c && wwidth(cell->c) == 1 ? cell->c : L' ';
         List_append(printList, &wc);
       }
     }
