@@ -1,4 +1,5 @@
 #include "wheels/fptr.h"
+#include <time.h>
 #include <wchar.h>
 #define LIST_NOCHECKS
 
@@ -266,6 +267,8 @@ term_element *textBox_newElement(const My_allocator *allocator) {
   return selfptr;
 }
 int main() {
+  print("hello utf8 {wcstr}", (wchar *)L"╭╮╰╯─│");
+  nanosleep(&(struct timespec){3}, NULL);
   add_element(textBox_newElement(defaultAlloc));
   while (1)
     term_renderElements(term_getInput(10));

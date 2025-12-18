@@ -2,7 +2,10 @@ const std = @import("std");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
+
+    const optimize = b.standardOptimizeOption(.{
+        .preferred_optimize_mode = .ReleaseFast,
+    });
 
     const exe = b.addExecutable(.{
         .name = "clig2",
@@ -16,7 +19,7 @@ pub fn build(b: *std.Build) void {
         exe.addCSourceFile(.{
             .file = b.path("textboxExample.c"),
             .flags = &.{
-                "-g",
+                // "-g",
                 "-w",
             },
         });
@@ -24,10 +27,9 @@ pub fn build(b: *std.Build) void {
         exe.addCSourceFile(.{
             .file = b.path("textboxExample.c"),
             .flags = &.{
-                "-g",
+                // "-g",
                 "-w",
-                "-D_XOPEN_SOURCE=700",
-                // "-D_POSIX_C_SOURCE=200809L",
+                // "-D_XOPEN_SOURCE=700",
             },
         });
     }

@@ -3,3 +3,4 @@ tui.log
 atui
 .zig-cache
 zig-out/bin
+perf.*

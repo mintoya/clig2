@@ -239,7 +239,7 @@ static_assert(sizeof(term_position) == sizeof(term_cell), "add alignment handlin
   HHMap_free(back_buffer);
 }
 __attribute__((hot)) void term_setCell(struct term_position pos, struct term_cell cell) {
-  HHMap_fset(back_buffer, ((fptr){sizeof(struct term_position), (u8 *)&pos}), &cell);
+  HHMap_set(back_buffer, &pos, &cell);
 }
 void term_setCell_L(i32 row, i32 col, wchar character, u8 fgcolorLabel, u8 bgcolorLable) {
   term_setCell(
