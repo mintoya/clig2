@@ -127,9 +127,10 @@ struct term_position get_terminal_size() {
   return size;
 }
 int wwidth(wchar wc) {
-  if (!iswprint(cell->c))
+  if (!iswprint(wc))
     return 0;
-  return wcwidth(wc);
+  #pragma message "wcwidth"
+  return 1;
 }
 #else
   #error "platform not supported"
@@ -167,15 +168,24 @@ void convertwrite(wchar_t *data, usize len) {
     assertMessage(n != ((size_t)-1), "wcrtomb failed?");
     wlen += n;
   }
-
 #if defined(__linux__)
+  if (justdumped) {
+    write(STDOUT_FILENO, "\033[?2026h", 8);
+    write(STDOUT_FILENO, "\033[0m\033[2J", 8);
+  }
   write(STDOUT_FILENO, u8data, wlen);
+  if (justdumped)
+    write(STDOUT_FILENO, "\033[?2026l", 8);
 #else
+  if (justdumped) {
+    _write(_fileno(stdout), "\033[?2026h", 8);
+    _write(_fileno(stdout), "\033[0m\033[2J", 8);
+  }
   _write(_fileno(stdout), u8data, wlen);
+  if (justdumped)
+    _write(_fileno(stdout), "\033[?2026l", 8);
 #endif
-  // unbuffered
-  // fflush(stdout);
-  nanosleep(&(struct timespec){0, 1000}, NULL);
+  justdumped = false;
 }
 static_assert(sizeof(term_position) == sizeof(term_cell), "add alignment handling ");
 [[gnu::constructor]] void term_setup(void) {
@@ -326,11 +336,7 @@ void term_render(void) {
     );
   }
 
-  List_appendFromArr(printList, L"\033[3J", 4);
-  if (justdumped) {
-    List_appendFromArr(printList, L"\033[0m\033[2J", 8);
-    justdumped = false;
-  }
+  // List_appendFromArr(printList, L"\033[3J", 4);
 
   term_color lastbg = {0};
   term_color lastfg = {0};
@@ -374,6 +380,7 @@ void term_render(void) {
     }
   }
   convertwrite((wchar *)printList->head, printList->length);
+
   printList->length = 0;
   last = recent;
 }

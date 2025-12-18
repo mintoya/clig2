@@ -268,5 +268,5 @@ term_element *textBox_newElement(const My_allocator *allocator) {
 int main() {
   add_element(textBox_newElement(defaultAlloc));
   while (1)
-    term_renderElements(term_getInput(.01));
+    term_renderElements(term_getInput(10));
 }
