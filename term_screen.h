@@ -152,7 +152,7 @@ void convertwrite(wchar_t *data, usize len) {
   usize bufSize = lineup(24 + len * MB_CUR_MAX, 4096);
 #ifndef TERM_NOSYNC
   if (u8cap == 0) {
-    write(_fileno(stdout), "\033[?2026h", 8);
+    fwrite("\033[?2026h", 8, 1, stdout);
   }
 #endif
 
