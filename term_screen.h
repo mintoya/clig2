@@ -287,7 +287,7 @@ void term_setCell_LL(i32 row, i32 col, wchar character, u8 fgr, u8 fgg, u8 fgb, 
 // will break if mp_cur_max ever changes
 // appends wchar to place+len, then increments len
 #include <time.h>
-void list_addfgColor(List *printList, struct term_color fg) {
+void L_fgcolor(List *printList, struct term_color fg) {
   typeof(fg) currentfg = fg;
   switch (currentfg.tag) {
     case term_color_idx: {
@@ -306,12 +306,11 @@ void list_addfgColor(List *printList, struct term_color fg) {
       );
     } break;
     default: {
-      List_resize(printList, printList->length + 64);
-      printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[39m");
+      List_appendFromArr(printList, L"\033[39m", 6);
     } break;
   }
 }
-void list_addbgColor(List *printList, struct term_color bg) {
+void L_bgcolor(List *printList, struct term_color bg) {
   typeof(bg) currentbg = bg;
   switch (currentbg.tag) {
     case term_color_idx: {
@@ -419,8 +418,8 @@ void term_render(void) {
           lastCel = *cell;
         }
         if (!coloreq(currentbg, lastbg) || !coloreq(currentfg, lastfg)) {
-          list_addfgColor(printList, currentfg);
-          list_addbgColor(printList, currentbg);
+          L_fgcolor(printList, currentfg);
+          L_bgcolor(printList, currentbg);
         }
         lastbg = currentbg;
         lastfg = currentfg;
