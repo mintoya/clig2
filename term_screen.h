@@ -150,11 +150,6 @@ void convertwrite(wchar_t *data, usize len) {
   static usize u8cap = 0;
 
   usize bufSize = lineup(24 + len * MB_CUR_MAX, 4096);
-#ifndef TERM_NOSYNC
-  if (u8cap == 0) {
-    fwrite("\033[?2026h", 8, 1, stdout);
-  }
-#endif
 
   if (bufSize > u8cap) {
     if (u8data)
@@ -169,6 +164,10 @@ void convertwrite(wchar_t *data, usize len) {
   mbstate_t mbs = {0};
   size_t n;
 
+#ifndef TERM_NOSYNC
+  memcpy(u8data + wlen, "\033[?2026h", 8);
+  wlen += 8;
+#endif
   if (justdumped) {
     memcpy(u8data + wlen, "\033[0m\033[2J", 8);
     wlen += 8;
