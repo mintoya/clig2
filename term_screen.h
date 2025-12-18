@@ -53,6 +53,7 @@ typedef struct __attribute__((aligned(16))) term_cell {
   struct term_color fg;
   // clang-format off
   bool bold          : 1;
+  bool dim           : 1;
   bool italic        : 1;
   bool underline     : 1;
   bool blinking      : 1;
@@ -65,8 +66,20 @@ static bool poseq(term_position a, term_position b) {
   return (a.col == b.col && a.row == b.row);
 }
 bool coloreq(struct term_color a, struct term_color b) {
-  static_assert(sizeof(a) == sizeof(u32), "use memcmp");
-  return (*(u32 *)&a == *(u32 *)&b);
+  if (a.tag != b.tag)
+    return false;
+  switch (a.tag) {
+    case term_color_full:
+      return (
+          a.color.r == b.color.r &&
+          a.color.g == b.color.g &&
+          a.color.b == b.color.b
+      );
+    case term_color_idx:
+      return a.color.colorIDX == b.color.colorIDX;
+    default:
+      return true;
+  }
 }
 void term_render(void);
 // clears the cell storage
@@ -190,6 +203,8 @@ void convertwrite(wchar_t *data, usize len) {
     u8cap = bufSize;
     print_wfO(fileprint, globalLog, "maxwrite: {}\n", u8cap);
     print_wfO(fileprint, globalLog, "hmap size: {}\n", HHMap_footprint(back_buffer));
+    print_wfO(fileprint, globalLog, "hmap keys: {}\n", (usize)HHMap_count(back_buffer));
+    print_wfO(fileprint, globalLog, "hmap collisions: {}\n", (usize)HHMap_countCollisions(back_buffer));
   }
 
   usize wlen = 0;
@@ -204,12 +219,8 @@ void convertwrite(wchar_t *data, usize len) {
     memcpy(u8data + wlen, "\033[0m\033[2J", 8);
     wlen += 8;
   }
-  for (usize i = 0; i < len; i++) {
+  for (usize i = 0; i < len; i++)
     wsc_add((u8 *)u8data, &wlen, data[i]);
-    // size_t n = wcrtomb(u8data + wlen, data[i], &mbs);
-    // assertMessage(n != ((size_t)-1), "wcrtomb failed?");
-    // wlen += n;
-  }
 #ifndef TERM_NOSYNC
   memcpy(u8data + wlen, "\033[?2026l", 8);
   wlen += 8;
@@ -318,7 +329,9 @@ void list_addbgColor(List *printList, struct term_color bg) {
   }
 }
 bool styleeq(term_cell a, term_cell b) {
+  // return false;
   return (
+      a.dim == b.dim &&
       a.bold == b.bold &&
       a.italic == b.italic &&
       a.underline == b.underline &&
@@ -326,31 +339,32 @@ bool styleeq(term_cell a, term_cell b) {
       a.strikethrough == b.strikethrough
   );
 }
-void L_addStyle(List *l, term_cell c) {
+void L_addStyle(List *l, term_cell c, term_cell last) {
   bool hasStyle = false;
-  if (c.bold) {
+  if (c.bold)
     List_appendFromArr(l, L"\033[1m", 4);
-    hasStyle = true;
-  }
-  if (c.italic) {
+  else if (last.bold)
+    List_appendFromArr(l, L"\033[22m", 5);
+  if (c.dim)
+    List_appendFromArr(l, L"\033[2m", 4);
+  else if (last.dim)
+    List_appendFromArr(l, L"\033[22m", 5);
+  if (c.italic)
     List_appendFromArr(l, L"\033[3m", 4);
-    hasStyle = true;
-  }
-  if (c.underline) {
+  else if (last.italic)
+    List_appendFromArr(l, L"\033[23m", 5);
+  if (c.underline)
     List_appendFromArr(l, L"\033[4m", 4);
-    hasStyle = true;
-  }
-  if (c.blinking) {
+  else if (last.underline)
+    List_appendFromArr(l, L"\033[24m", 5);
+  if (c.blinking)
     List_appendFromArr(l, L"\033[5m", 4);
-    hasStyle = true;
-  }
-  if (c.strikethrough) {
+  else if (last.blinking)
+    List_appendFromArr(l, L"\033[25m", 5);
+  if (c.strikethrough)
     List_appendFromArr(l, L"\033[9m", 4);
-    hasStyle = true;
-  }
-  if (!hasStyle) {
-    List_appendFromArr(l, L"\033[0m", 4);
-  }
+  else if (last.strikethrough)
+    List_appendFromArr(l, L"\033[29m", 5);
 }
 void term_render(void) {
   static struct term_position last = {0, 0};
@@ -401,15 +415,15 @@ void term_render(void) {
           currentfg = t;
         }
         if (!styleeq(lastCel, *cell)) {
-          L_addStyle(printList, *cell);
+          L_addStyle(printList, *cell, lastCel);
           lastCel = *cell;
         }
         if (!coloreq(currentbg, lastbg) || !coloreq(currentfg, lastfg)) {
           list_addfgColor(printList, currentfg);
           list_addbgColor(printList, currentbg);
-          lastbg = currentbg;
-          lastfg = currentfg;
         }
+        lastbg = currentbg;
+        lastfg = currentfg;
         // TODO move char check to setcell
         wchar_t wc = cell->c && wwidth(cell->c) == 1 ? cell->c : L' ';
         List_append(printList, &wc);
