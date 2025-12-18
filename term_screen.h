@@ -149,7 +149,12 @@ void convertwrite(wchar_t *data, usize len) {
   static char *u8data = NULL;
   static usize u8cap = 0;
 
-  usize bufSize = lineup(len * MB_CUR_MAX, 4096);
+  usize bufSize = lineup(24 + len * MB_CUR_MAX, 4096);
+#ifndef TERM_NOSYNC
+  if (u8cap == 0) {
+    write(_fileno(stdout), "\033[?2026h", 8);
+  }
+#endif
 
   if (bufSize > u8cap) {
     if (u8data)
@@ -160,30 +165,28 @@ void convertwrite(wchar_t *data, usize len) {
     print_wfO(fileprint, globalLog, "hmap size: {}\n", HHMap_footprint(back_buffer));
   }
 
-  mbstate_t mbs = {0};
   usize wlen = 0;
+  mbstate_t mbs = {0};
   size_t n;
+
+  if (justdumped) {
+    memcpy(u8data + wlen, "\033[0m\033[2J", 8);
+    wlen += 8;
+  }
   for (usize i = 0; i < len; i++) {
     size_t n = wcrtomb(u8data + wlen, data[i], &mbs);
     assertMessage(n != ((size_t)-1), "wcrtomb failed?");
     wlen += n;
   }
+#ifndef TERM_NOSYNC
+  memcpy(u8data + wlen, "\033[?2026l", 8);
+  wlen += 8;
+#endif
+
 #if defined(__linux__)
-  if (justdumped) {
-    write(STDOUT_FILENO, "\033[?2026h", 8);
-    write(STDOUT_FILENO, "\033[0m\033[2J", 8);
-  }
   write(STDOUT_FILENO, u8data, wlen);
-  if (justdumped)
-    write(STDOUT_FILENO, "\033[?2026l", 8);
 #else
-  if (justdumped) {
-    _write(_fileno(stdout), "\033[?2026h", 8);
-    _write(_fileno(stdout), "\033[0m\033[2J", 8);
-  }
   _write(_fileno(stdout), u8data, wlen);
-  if (justdumped)
-    _write(_fileno(stdout), "\033[?2026l", 8);
 #endif
   justdumped = false;
 }
