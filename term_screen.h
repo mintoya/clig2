@@ -72,7 +72,7 @@ void term_render(void);
 // clears the cell storage
 // should use this if youre rendering everything every frame
 void term_dump(void);
-void term_setCell(struct term_position, struct term_cell cell);
+__attribute__((hot)) void term_setCell(struct term_position, struct term_cell cell);
 void term_setCell_L(i32 row, i32 col, wchar character, u8 fgcolorLabel, u8 bgcolorLable);
 void term_setCell_LL(i32 row, i32 col, wchar character, u8 fgr, u8 fgg, u8 fgb, u8 bgr, u8 bgg, u8 bgb);
 struct term_position get_terminal_size(void);
@@ -148,31 +148,34 @@ extern int nanosleep(const struct timespec *request, struct timespec *remain);
 // not benchmarked
 // assuming MB_CUR_MAX never changes
 void wsc_add(u8 *place, usize *len, wchar wc) {
-  if (wc >= 0x10000) {
-    mbstate_t mbs = {0};
-    *len += wcrtomb((char *)(place + *len), wc, &mbs);
-    return;
-  }
-  static u8 *storage[0x10000] = {0};
-  if (!storage[0]) {
-    usize entrySize = MB_CUR_MAX + 2;
-    storage[0] = (u8 *)aAlloc(defaultAlloc, entrySize * 0x10000);
-    for (u32 i = 1; i < 0x10000; i++) {
-      storage[i] = storage[0] + (i * entrySize);
-      storage[i][0] = 0;
-    }
-  }
-
-  if (!storage[wc][0]) {
-    mbstate_t mbs = {0};
-    size_t n = wcrtomb((char *)(storage[wc] + 2), wc, &mbs);
-    assertMessage(n < ((u8)-1));
-    storage[wc][0] = 1;
-    storage[wc][1] = (u8)n;
-  }
-  u8 length = storage[wc][1];
-  memcpy(place + *len, storage[wc] + 2, length);
-  *len += length;
+  mbstate_t mbs = {0};
+  *len += wcrtomb((char *)(place + *len), wc, &mbs);
+  return;
+  // if (wc >= 0x10000) {
+  //   mbstate_t mbs = {0};
+  //   *len += wcrtomb((char *)(place + *len), wc, &mbs);
+  //   return;
+  // }
+  // static u8 *storage[0x10000] = {0};
+  // if (!storage[0]) {
+  //   usize entrySize = MB_CUR_MAX + 2;
+  //   storage[0] = (u8 *)aAlloc(defaultAlloc, entrySize * 0x10000);
+  //   for (u32 i = 1; i < 0x10000; i++) {
+  //     storage[i] = storage[0] + (i * entrySize);
+  //     storage[i][0] = 0;
+  //   }
+  // }
+  //
+  // if (!storage[wc][0]) {
+  //   mbstate_t mbs = {0};
+  //   size_t n = wcrtomb((char *)(storage[wc] + 2), wc, &mbs);
+  //   assertMessage(n < ((u8)-1));
+  //   storage[wc][0] = 1;
+  //   storage[wc][1] = (u8)n;
+  // }
+  // u8 length = storage[wc][1];
+  // memcpy(place + *len, storage[wc] + 2, length);
+  // *len += length;
 }
 void convertwrite(wchar_t *data, usize len) {
   static char *u8data = NULL;
@@ -227,7 +230,7 @@ static_assert(sizeof(term_position) == sizeof(term_cell), "add alignment handlin
       sizeof(term_position),
       sizeof(term_cell),
       defaultAlloc,
-      r * c * 5
+      r * c / 3
   );
   setvbuf(stdout, NULL, _IONBF, 0);
   globalLog = fopen("tui.log", "a");
@@ -235,7 +238,7 @@ static_assert(sizeof(term_position) == sizeof(term_cell), "add alignment handlin
 [[gnu::destructor]] void term_cleanup(void) {
   HHMap_free(back_buffer);
 }
-void term_setCell(struct term_position pos, struct term_cell cell) {
+__attribute__((hot)) void term_setCell(struct term_position pos, struct term_cell cell) {
   HHMap_fset(back_buffer, ((fptr){sizeof(struct term_position), (u8 *)&pos}), &cell);
 }
 void term_setCell_L(i32 row, i32 col, wchar character, u8 fgcolorLabel, u8 bgcolorLable) {
@@ -370,13 +373,13 @@ void term_render(void) {
     );
   }
 
-  // List_appendFromArr(printList, L"\033[3J", 4);
-
   term_color lastbg = {0};
   term_color lastfg = {0};
   term_cell lastCel = {0};
-  for (u32 i = 0; i < HHMap_getMetaSize(back_buffer); i++) {
-    for (u32 j = 0; j < HHMap_getBucketSize(back_buffer, i); j++) {
+  const u32 metaSize = HHMap_getMetaSize(back_buffer);
+  for (u32 i = 0; i < metaSize; i++) {
+    const u32 bucketSize = HHMap_getBucketSize(back_buffer, i);
+    for (u32 j = 0; j < bucketSize; j++) {
       void *it = HHMap_getCoord(back_buffer, i, j);
       term_position *position = (struct term_position *)it;
       term_cell *cell = (struct term_cell *)((u8 *)it + sizeof(struct term_position));
