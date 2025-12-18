@@ -145,6 +145,35 @@ static bool justdumped = false;
 #endif
 #include <time.h>
 extern int nanosleep(const struct timespec *request, struct timespec *remain);
+// not benchmarked
+// assuming MB_CUR_MAX never changes
+void wsc_add(u8 *place, usize *len, wchar wc) {
+  if (wc >= 0x10000) {
+    mbstate_t mbs = {0};
+    *len += wcrtomb((char *)(place + *len), wc, &mbs);
+    return;
+  }
+  static u8 *storage[0x10000] = {0};
+  if (!storage[0]) {
+    usize entrySize = MB_CUR_MAX + 2;
+    storage[0] = (u8 *)aAlloc(defaultAlloc, entrySize * 0x10000);
+    for (u32 i = 1; i < 0x10000; i++) {
+      storage[i] = storage[0] + (i * entrySize);
+      storage[i][0] = 0;
+    }
+  }
+
+  if (!storage[wc][0]) {
+    mbstate_t mbs = {0};
+    size_t n = wcrtomb((char *)(storage[wc] + 2), wc, &mbs);
+    assertMessage(n < ((u8)-1));
+    storage[wc][0] = 1;
+    storage[wc][1] = (u8)n;
+  }
+  u8 length = storage[wc][1];
+  memcpy(place + *len, storage[wc] + 2, length);
+  *len += length;
+}
 void convertwrite(wchar_t *data, usize len) {
   static char *u8data = NULL;
   static usize u8cap = 0;
@@ -173,9 +202,10 @@ void convertwrite(wchar_t *data, usize len) {
     wlen += 8;
   }
   for (usize i = 0; i < len; i++) {
-    size_t n = wcrtomb(u8data + wlen, data[i], &mbs);
-    assertMessage(n != ((size_t)-1), "wcrtomb failed?");
-    wlen += n;
+    wsc_add((u8 *)u8data, &wlen, data[i]);
+    // size_t n = wcrtomb(u8data + wlen, data[i], &mbs);
+    // assertMessage(n != ((size_t)-1), "wcrtomb failed?");
+    // wlen += n;
   }
 #ifndef TERM_NOSYNC
   memcpy(u8data + wlen, "\033[?2026l", 8);
@@ -240,6 +270,8 @@ void term_setCell_LL(i32 row, i32 col, wchar character, u8 fgr, u8 fgg, u8 fgb, 
       }
   );
 }
+// will break if mp_cur_max ever changes
+// appends wchar to place+len, then increments len
 #include <time.h>
 void list_addfgColor(List *printList, struct term_color fg) {
   typeof(fg) currentfg = fg;
