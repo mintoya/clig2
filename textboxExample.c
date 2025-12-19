@@ -251,8 +251,8 @@ term_element *textBox_newElement(const My_allocator *allocator) {
   *userData = (struct textBox){
       .defaultCell = (term_cell){
           0,
-          term_color_fromIdx(0), term_color_fromIdx(255),
-          0, 0, 0, 0, 0, 0, 1
+          term_color_fromIdx(0), term_color_fromIdx(67),
+          0, 0, 0, 0, 1, 0, 0, 1
       },
       .currentLinePlace = testText(),
       .position = {5, 5},
@@ -266,10 +266,33 @@ term_element *textBox_newElement(const My_allocator *allocator) {
   };
   return selfptr;
 }
+term_element *textBox_newElement_dim(const My_allocator *allocator) {
+  term_element *selfptr = (term_element *)aAlloc(allocator, sizeof(term_element));
+  struct textBox *userData = (struct textBox *)aAlloc(allocator, sizeof(struct textBox));
+
+  *userData = (struct textBox){
+      .defaultCell = (term_cell){
+          0,
+          term_color_fromIdx(0), term_color_fromIdx(67),
+          1, 1, 0, 0, 0, 0, 0, 1
+      },
+      .currentLinePlace = testText(),
+      .position = {15, 15},
+      .currentLine = 0,
+      .currentCol = 0,
+      .size = {20, 40},
+  };
+  *selfptr = (term_element){
+      .arb = userData,
+      .render = textbox_renderFn,
+  };
+  return selfptr;
+}
 int main() {
   print("hello utf8 {wcstr}", (wchar *)L"╭╮╰╯─│");
-  nanosleep(&(struct timespec){3}, NULL);
+  nanosleep(&(struct timespec){1}, NULL);
   add_element(textBox_newElement(defaultAlloc));
+  add_element(textBox_newElement_dim(defaultAlloc));
   while (1)
-    term_renderElements(term_getInput(10));
+    term_renderElements(term_getInput(1));
 }
