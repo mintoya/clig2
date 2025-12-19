@@ -160,36 +160,6 @@ static bool justdumped = false;
 extern int nanosleep(const struct timespec *request, struct timespec *remain);
 // not benchmarked
 // assuming MB_CUR_MAX never changes
-void wsc_add(u8 *place, usize *len, wchar wc) {
-  mbstate_t mbs = {0};
-  *len += wcrtomb((char *)(place + *len), wc, &mbs);
-  return;
-  // if (wc >= 0x10000) {
-  //   mbstate_t mbs = {0};
-  //   *len += wcrtomb((char *)(place + *len), wc, &mbs);
-  //   return;
-  // }
-  // static u8 *storage[0x10000] = {0};
-  // if (!storage[0]) {
-  //   usize entrySize = MB_CUR_MAX + 2;
-  //   storage[0] = (u8 *)aAlloc(defaultAlloc, entrySize * 0x10000);
-  //   for (u32 i = 1; i < 0x10000; i++) {
-  //     storage[i] = storage[0] + (i * entrySize);
-  //     storage[i][0] = 0;
-  //   }
-  // }
-  //
-  // if (!storage[wc][0]) {
-  //   mbstate_t mbs = {0};
-  //   size_t n = wcrtomb((char *)(storage[wc] + 2), wc, &mbs);
-  //   assertMessage(n < ((u8)-1));
-  //   storage[wc][0] = 1;
-  //   storage[wc][1] = (u8)n;
-  // }
-  // u8 length = storage[wc][1];
-  // memcpy(place + *len, storage[wc] + 2, length);
-  // *len += length;
-}
 void convertwrite(wchar_t *data, usize len) {
   static char *u8data = NULL;
   static usize u8cap = 0;
@@ -220,7 +190,7 @@ void convertwrite(wchar_t *data, usize len) {
     wlen += 8;
   }
   for (usize i = 0; i < len; i++)
-    wsc_add((u8 *)u8data, &wlen, data[i]);
+    wlen += wcrtomb((char *)(u8data + wlen), data[i], &mbs);
 #ifndef TERM_NOSYNC
   memcpy(u8data + wlen, "\033[?2026l", 8);
   wlen += 8;
@@ -328,7 +298,6 @@ void L_bgcolor(List *printList, struct term_color bg) {
   }
 }
 bool styleeq(term_cell a, term_cell b) {
-  // return false;
   return (
       a.dim == b.dim &&
       a.bold == b.bold &&
