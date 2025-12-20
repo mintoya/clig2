@@ -4,9 +4,10 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
 
     const optimize = b.standardOptimizeOption(.{
-        .preferred_optimize_mode = .ReleaseFast,
+        .preferred_optimize_mode = .Debug,
     });
 
+    const csource = "./gol.c";
     const exe = b.addExecutable(.{
         .name = "clig2",
         .root_module = b.createModule(.{
@@ -17,18 +18,18 @@ pub fn build(b: *std.Build) void {
     exe.linkLibC();
     if (target.result.os.tag != .windows) {
         exe.addCSourceFile(.{
-            .file = b.path("textboxExample.c"),
+            .file = b.path(csource),
             .flags = &.{
-                // "-g",
                 "-w",
+                // "-g",
             },
         });
     } else {
         exe.addCSourceFile(.{
-            .file = b.path("textboxExample.c"),
+            .file = b.path(csource),
             .flags = &.{
-                // "-g",
                 "-w",
+                // "-g",
                 // "-D_XOPEN_SOURCE=700",
             },
         });

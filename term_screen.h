@@ -65,6 +65,22 @@ typedef struct __attribute__((aligned(16))) term_cell {
 static bool poseq(term_position a, term_position b) {
   return (a.col == b.col && a.row == b.row);
 }
+bool coloreq(struct term_color a, struct term_color b);
+void term_render(void);
+// clears the cell storage
+// should use this if youre rendering everything every frame
+void term_dump(void);
+__attribute__((hot)) void term_setCell(struct term_position, struct term_cell cell);
+void term_setCell_L(i32 row, i32 col, wchar character, u8 fgcolorLabel, u8 bgcolorLable);
+void term_setCell_LL(i32 row, i32 col, wchar character, u8 fgr, u8 fgg, u8 fgb, u8 bgr, u8 bgg, u8 bgb);
+struct term_position get_terminal_size(void);
+#endif // MY_TUI_H
+
+#if (defined(__INCLUDE_LEVEL__) && __INCLUDE_LEVEL__ == 0)
+#define MY_TUI_C
+#endif
+#ifdef MY_TUI_C
+
 bool coloreq(struct term_color a, struct term_color b) {
   if (a.tag != b.tag)
     return false;
@@ -81,21 +97,6 @@ bool coloreq(struct term_color a, struct term_color b) {
       return true;
   }
 }
-void term_render(void);
-// clears the cell storage
-// should use this if youre rendering everything every frame
-void term_dump(void);
-__attribute__((hot)) void term_setCell(struct term_position, struct term_cell cell);
-void term_setCell_L(i32 row, i32 col, wchar character, u8 fgcolorLabel, u8 bgcolorLable);
-void term_setCell_LL(i32 row, i32 col, wchar character, u8 fgr, u8 fgg, u8 fgb, u8 bgr, u8 bgg, u8 bgb);
-struct term_position get_terminal_size(void);
-#endif // MY_TUI_H
-
-#if (defined(__INCLUDE_LEVEL__) && __INCLUDE_LEVEL__ == 0)
-#define MY_TUI_C
-#endif
-#ifdef MY_TUI_C
-
 #include "wheels/print.h"
 
 #if defined(_WIN32)
