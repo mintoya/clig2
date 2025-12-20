@@ -4,7 +4,7 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
 
     const optimize = b.standardOptimizeOption(.{
-        .preferred_optimize_mode = .Debug,
+        .preferred_optimize_mode = .ReleaseFast,
     });
 
     const csource = "./gol.c";
@@ -15,25 +15,17 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
-    exe.linkLibC();
-    if (target.result.os.tag != .windows) {
-        exe.addCSourceFile(.{
-            .file = b.path(csource),
-            .flags = &.{
-                "-w",
-                // "-g",
-            },
-        });
-    } else {
-        exe.addCSourceFile(.{
-            .file = b.path(csource),
-            .flags = &.{
-                "-w",
-                // "-g",
-                // "-D_XOPEN_SOURCE=700",
-            },
-        });
-    }
+    exe.linkLibCpp();
+    exe.addCSourceFile(.{
+        .file = b.path(csource),
+        .flags = &.{
+            "-w",
+            if (target.result.os.tag != .windows)
+                "-D_XOPEN_SOURCE=700"
+            else
+                "",
+        },
+    });
 
     b.installArtifact(exe);
 
