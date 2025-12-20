@@ -1,6 +1,6 @@
 #ifndef MY_TERM_INPUT_H
 #define MY_TERM_INPUT_H
-#include "wheels/fptr.h"
+#include "wheels/types.h"
 #include "wheels/print.h"
 
 typedef struct {
@@ -18,19 +18,19 @@ typedef struct {
     term_mouse_up = 0,
     term_mouse_down = 1,
   } state;
-  bool term_mouse_ctrl : 1;
-  bool term_mouse_drag : 1;
-  bool term_mouse_alt : 1;
+  bool term_mouse_ctrl;
+  bool term_mouse_drag;
+  bool term_mouse_alt;
 } term_mouse;
 typedef struct {
   enum : u8 {
+    term_keyboard_none = 0, 
     term_keyboard_raw,
     term_keyboard_ctrl,
     term_keyboard_alt,
     term_keyboard_arrow,
     term_keyboard_function,
     term_keyboard_mouse,
-    term_keyboard_none, // NEW: No input available
     term_keyboard_unknown,
   } kind;
   union {

@@ -18,6 +18,9 @@ pub fn build(b: *std.Build) void {
     exe.linkLibCpp();
     exe.addCSourceFile(.{
         .file = b.path(csource),
+    });
+    exe.addCSourceFile(.{
+        .file = b.path("include.c"),
         .flags = &.{
             "-w",
             if (target.result.os.tag != .windows)

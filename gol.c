@@ -1,14 +1,8 @@
-// #define LIST_NOCHECKS
-#include <stdlib.h>
-#include <string.h>
-#include <time.h>
-#define MY_TERM_ELEMENTS_C
+#define LIST_NOCHECKS
 #include "term_elements.h"
-#define MY_TERM_INPUT_C
 #include "term_input.h"
-#define MY_TUI_C
 #include "term_screen.h"
-#include "wheels/wheels.h"
+#include <stdlib.h>
 
 typedef struct golScreen {
   term_position size;
