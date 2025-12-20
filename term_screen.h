@@ -1,12 +1,7 @@
 #ifndef MY_TUI_H
 #define MY_TUI_H
-#include "wheels/arenaAllocator.h"
-#include "wheels/fptr.h"
 #include "wheels/types.h"
-#include <assert.h>
 #include <stdio.h>
-#include <wchar.h>
-#include <wctype.h>
 
 static FILE *globalLog = NULL;
 typedef struct term_position {
@@ -27,6 +22,40 @@ typedef struct term_color {
   enum term_colorTag tag;
 } term_color;
 
+
+typedef struct __attribute__((aligned(16))) term_cell {
+  wchar c;
+  struct term_color bg;
+  struct term_color fg;
+  // clang-format off
+  bool bold          : 1;
+  bool dim           : 1;
+  bool italic        : 1;
+  bool underline     : 1;
+  bool blinking      : 1;
+  bool strikethrough : 1;
+  bool inverse       : 1;
+  bool visible       : 1;
+  // clang-format on
+} term_cell;
+bool coloreq(struct term_color a, struct term_color b);
+void term_render(void);
+// clears the cell storage
+// should use this if youre rendering everything every frame
+void term_dump(void);
+__attribute__((hot)) void term_setCell(struct term_position, struct term_cell cell);
+void term_setCell_L(i32 row, i32 col, wchar character, u8 fgcolorLabel, u8 bgcolorLable);
+void term_setCell_LL(i32 row, i32 col, wchar character, u8 fgr, u8 fgg, u8 fgb, u8 bgr, u8 bgg, u8 bgb);
+struct term_position get_terminal_size(void);
+#endif // MY_TUI_H
+
+// #if (defined(__INCLUDE_LEVEL__) && __INCLUDE_LEVEL__ == 0)
+// #define MY_TUI_C
+// #endif
+#ifdef MY_TUI_C
+static bool poseq(term_position a, term_position b) {
+  return (a.col == b.col && a.row == b.row);
+}
 static inline term_color term_color_fromHex(u32 hex) {
   return (term_color){
       .color = {
@@ -46,40 +75,13 @@ static inline term_color term_color_fromIdx(u8 hex) {
 static inline term_color term_color_default() {
   return (term_color){.tag = term_color_def};
 }
-
-typedef struct __attribute__((aligned(16))) term_cell {
-  wchar c;
-  struct term_color bg;
-  struct term_color fg;
-  // clang-format off
-  bool bold          : 1;
-  bool dim           : 1;
-  bool italic        : 1;
-  bool underline     : 1;
-  bool blinking      : 1;
-  bool strikethrough : 1;
-  bool inverse       : 1;
-  bool visible       : 1;
-  // clang-format on
-} term_cell;
-static bool poseq(term_position a, term_position b) {
-  return (a.col == b.col && a.row == b.row);
-}
-bool coloreq(struct term_color a, struct term_color b);
-void term_render(void);
-// clears the cell storage
-// should use this if youre rendering everything every frame
-void term_dump(void);
-__attribute__((hot)) void term_setCell(struct term_position, struct term_cell cell);
-void term_setCell_L(i32 row, i32 col, wchar character, u8 fgcolorLabel, u8 bgcolorLable);
-void term_setCell_LL(i32 row, i32 col, wchar character, u8 fgr, u8 fgg, u8 fgb, u8 bgr, u8 bgg, u8 bgb);
-struct term_position get_terminal_size(void);
-#endif // MY_TUI_H
-
-#if (defined(__INCLUDE_LEVEL__) && __INCLUDE_LEVEL__ == 0)
-#define MY_TUI_C
-#endif
-#ifdef MY_TUI_C
+#include "wheels/arenaAllocator.h"
+#include "wheels/fptr.h"
+#include "wheels/types.h"
+#include <assert.h>
+#include <stdio.h>
+#include <wchar.h>
+#include <wctype.h>
 
 bool coloreq(struct term_color a, struct term_color b) {
   if (a.tag != b.tag)

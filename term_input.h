@@ -1,7 +1,6 @@
 #ifndef MY_TERM_INPUT_H
 #define MY_TERM_INPUT_H
 #include "wheels/types.h"
-#include "wheels/print.h"
 
 typedef struct {
   u32 row, col;
@@ -57,6 +56,7 @@ term_keyboard term_getInput(float timeout_seconds);
 
 #endif
 #ifdef MY_TERM_INPUT_C
+#include "wheels/print.h"
 
 #if defined(__linux__)
   #include <sys/select.h>

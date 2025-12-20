@@ -4,21 +4,21 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
 
     const optimize = b.standardOptimizeOption(.{
-        .preferred_optimize_mode = .ReleaseFast,
+        // .preferred_optimize_mode = .Debug,
     });
 
-    const csource = "./gol.c";
     const exe = b.addExecutable(.{
         .name = "clig2",
         .root_module = b.createModule(.{
+            .root_source_file = b.path("main.zig"),
             .target = target,
             .optimize = optimize,
         }),
     });
-    exe.linkLibCpp();
-    exe.addCSourceFile(.{
-        .file = b.path(csource),
-    });
+
+    exe.addIncludePath(b.path("."));
+    exe.linkLibC();
+
     exe.addCSourceFile(.{
         .file = b.path("include.c"),
         .flags = &.{
