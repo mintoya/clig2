@@ -22,11 +22,10 @@ typedef struct term_color {
   enum term_colorTag tag;
 } term_color;
 
-
 typedef struct __attribute__((aligned(16))) term_cell {
   wchar c;
-  struct term_color bg;
-  struct term_color fg;
+  term_color bg;
+  term_color fg;
   // clang-format off
   bool bold          : 1;
   bool dim           : 1;
@@ -38,21 +37,59 @@ typedef struct __attribute__((aligned(16))) term_cell {
   bool visible       : 1;
   // clang-format on
 } term_cell;
+
+typedef enum : u8 {
+  // clang-format off
+  term_cell_VISIBLE       = 0b1,
+  term_cell_BOLD          = 0b10,
+  term_cell_DIM           = 0b100,
+  term_cell_ITALIC        = 0b1000,
+  term_cell_UNDERLINE     = 0b10000,
+  term_cell_BLINKING      = 0b100000,
+  term_cell_STRIKETHROUGH = 0b1000000,
+  term_cell_INVERSE       = 0b10000000,
+  // clang-format on
+} term_cell_flags;
+
+// workaround for bitfield
+const term_cell *term_makeCell(wchar character, term_color fg, term_color bg, term_cell_flags f);
+term_color term_color_fromIdx(u8 hex);
+static inline term_color term_color_fromHex(u32 hex);
 bool coloreq(struct term_color a, struct term_color b);
 void term_render(void);
 // clears the cell storage
 // should use this if youre rendering everything every frame
 void term_dump(void);
-__attribute__((hot)) void term_setCell(struct term_position, struct term_cell cell);
-void term_setCell_L(i32 row, i32 col, wchar character, u8 fgcolorLabel, u8 bgcolorLable);
-void term_setCell_LL(i32 row, i32 col, wchar character, u8 fgr, u8 fgg, u8 fgb, u8 bgr, u8 bgg, u8 bgb);
+__attribute__((hot)) void term_setCell(struct term_position, term_cell cell);
+__attribute__((hot)) void term_setCell_Ref(struct term_position pos, const struct term_cell *cell);
 struct term_position get_terminal_size(void);
 #endif // MY_TUI_H
 
-// #if (defined(__INCLUDE_LEVEL__) && __INCLUDE_LEVEL__ == 0)
-// #define MY_TUI_C
-// #endif
+#if (defined(__INCLUDE_LEVEL__) && __INCLUDE_LEVEL__ == 0)
+#define MY_TUI_C
+#endif
 #ifdef MY_TUI_C
+
+const term_cell *term_makeCell(wchar character, term_color fg, term_color bg, term_cell_flags f) {
+  static thread_local term_cell res = {0};
+  res.c = character;
+  res.fg = fg;
+  res.bg = bg;
+
+  // clang-format off
+  res.bold          = f & term_cell_BOLD          ;
+  res.dim           = f & term_cell_DIM           ;
+  res.italic        = f & term_cell_ITALIC        ;
+  res.underline     = f & term_cell_UNDERLINE     ;
+  res.blinking      = f & term_cell_BLINKING      ;
+  res.strikethrough = f & term_cell_STRIKETHROUGH ;
+  res.inverse       = f & term_cell_INVERSE       ;
+  res.visible       = f & term_cell_VISIBLE       ;
+  // clang-format on
+
+  return &res;
+}
+
 static bool poseq(term_position a, term_position b) {
   return (a.col == b.col && a.row == b.row);
 }
@@ -66,7 +103,7 @@ static inline term_color term_color_fromHex(u32 hex) {
       .tag = term_color_full,
   };
 }
-static inline term_color term_color_fromIdx(u8 hex) {
+term_color term_color_fromIdx(u8 hex) {
   return (term_color){
       .color = {.colorIDX = hex},
       .tag = term_color_idx,
@@ -222,40 +259,11 @@ static_assert(sizeof(term_position) == sizeof(term_cell), "add alignment handlin
 [[gnu::destructor]] void term_cleanup(void) {
   HHMap_free(back_buffer);
 }
-__attribute__((hot)) void term_setCell(struct term_position pos, struct term_cell cell) {
+__attribute__((hot)) void term_setCell_Ref(struct term_position pos, const struct term_cell *cell) {
+  HHMap_set(back_buffer, &pos, cell);
+}
+__attribute__((hot)) void term_setCell(struct term_position pos, term_cell cell) {
   HHMap_set(back_buffer, &pos, &cell);
-}
-void term_setCell_L(i32 row, i32 col, wchar character, u8 fgcolorLabel, u8 bgcolorLable) {
-  term_setCell(
-      (struct term_position){row, col},
-      (struct term_cell){
-          .c = character,
-          .bg = (struct term_color){
-              .tag = term_color_idx,
-              .color = fgcolorLabel,
-          },
-          .fg = (struct term_color){
-              .tag = term_color_idx,
-              .color = bgcolorLable,
-          },
-      }
-  );
-}
-void term_setCell_LL(i32 row, i32 col, wchar character, u8 fgr, u8 fgg, u8 fgb, u8 bgr, u8 bgg, u8 bgb) {
-  term_setCell(
-      (struct term_position){row, col},
-      (struct term_cell){
-          .c = character,
-          .bg = (struct term_color){
-              .tag = term_color_full,
-              .color = {fgr, fgg, fgb},
-          },
-          .fg = (struct term_color){
-              .tag = term_color_full,
-              .color = {bgr, bgg, bgb},
-          },
-      }
-  );
 }
 // will break if mp_cur_max ever changes
 // appends wchar to place+len, then increments len

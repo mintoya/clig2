@@ -60,15 +60,23 @@ void draw_gol(term_element *objptr, const term_keyboard *input) {
       else
         gol_setPoint(selfptr, i, j, rand() % 100 < 10);
 
-      term_setCell(
+      // term_setCell(
+      //     (term_position){i, j * 2},
+      //     (term_cell){
+      //         .bg = term_color_fromIdx(0),
+      //         .fg = term_color_fromIdx(255),
+      //         .c = L' ',
+      //         .visible = 1,
+      //         .inverse = lastState,
+      //     }
+      // );
+      term_setCell_Ref(
           (term_position){i, j * 2},
-          (term_cell){
-              .bg = term_color_fromIdx(0),
-              .fg = term_color_fromIdx(255),
-              .c = L' ',
-              .visible = 1,
-              .inverse = lastState,
-          }
+          term_makeCell(
+              L' ',
+              term_color_fromIdx(0), term_color_fromIdx(255),
+              term_cell_VISIBLE | (lastState ? 0 : term_cell_INVERSE)
+          )
       );
       term_setCell(
           (term_position){i, j * 2 + 1},

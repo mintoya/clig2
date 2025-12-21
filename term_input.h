@@ -23,7 +23,7 @@ typedef struct {
 } term_mouse;
 typedef struct {
   enum : u8 {
-    term_keyboard_none = 0, 
+    term_keyboard_none = 0,
     term_keyboard_raw,
     term_keyboard_ctrl,
     term_keyboard_alt,
