@@ -23,14 +23,14 @@ typedef struct {
 } term_mouse;
 typedef struct {
   enum : u8 {
-    term_keyboard_none = 0,
-    term_keyboard_raw,
-    term_keyboard_ctrl,
-    term_keyboard_alt,
-    term_keyboard_arrow,
-    term_keyboard_function,
-    term_keyboard_mouse,
-    term_keyboard_unknown,
+    term_input_none = 0,
+    term_input_raw,
+    term_input_ctrl,
+    term_input_alt,
+    term_input_arrow,
+    term_input_function,
+    term_input_mouse,
+    term_input_unknown,
   } kind;
   union {
     term_mouse mouse;
@@ -42,17 +42,17 @@ typedef struct {
       bool alt;
     } modified;
     enum : u8 {
-      term_keyboard_up = 'A',
-      term_keyboard_down = 'B',
-      term_keyboard_right = 'C',
-      term_keyboard_left = 'D',
-      term_keyboard_home = 'H',
-      term_keyboard_end = 'F',
+      term_input_up = 'A',
+      term_input_down = 'B',
+      term_input_right = 'C',
+      term_input_left = 'D',
+      term_input_home = 'H',
+      term_input_end = 'F',
     } arrow;
     u8 function_key;
   } data;
-} term_keyboard;
-term_keyboard term_getInput(float timeout_seconds);
+} term_input;
+term_input term_getInput(float timeout_seconds);
 
 #endif
 #ifdef MY_TERM_INPUT_C
@@ -114,8 +114,8 @@ term_mouse mouse(u8 *buf, u8 len) {
   };
 }
 
-term_keyboard term_getInput(float timeout_seconds) {
-  term_keyboard res = {0};
+term_input term_getInput(float timeout_seconds) {
+  term_input res = {0};
 
   // Use select() to wait for input with timeout
   fd_set readfds;
@@ -130,13 +130,13 @@ term_keyboard term_getInput(float timeout_seconds) {
 
   if (select_result == 0) {
     // Timeout - no input available
-    res.kind = term_keyboard_none;
+    res.kind = term_input_none;
     return res;
   }
 
   if (select_result < 0) {
     // Error
-    res.kind = term_keyboard_unknown;
+    res.kind = term_input_unknown;
     return res;
   }
 
@@ -145,7 +145,7 @@ term_keyboard term_getInput(float timeout_seconds) {
   usize n = read(STDIN_FILENO, buf, sizeof(buf));
 
   if (n == 0) {
-    res.kind = term_keyboard_unknown;
+    res.kind = term_input_unknown;
     return res;
   }
 
@@ -153,24 +153,24 @@ term_keyboard term_getInput(float timeout_seconds) {
   if (buf[0] == 27) {
     if (n == 1) {
       // Just ESC key pressed
-      res.kind = term_keyboard_raw;
+      res.kind = term_input_raw;
       res.data.raw = 27;
     } else if (n >= 2 && buf[1] == '[') {
       // CSI sequence: ESC [
       if (n >= 3 && buf[2] == '<') {
         // Mouse input: ESC [
-        res.kind = term_keyboard_mouse;
+        res.kind = term_input_mouse;
         res.data.mouse = mouse(buf + 3, n - 3);
       } else if (n == 3 && buf[2] >= 'A' && buf[2] <= 'H') {
         // Simple arrow keys or Home/End: ESC [ A/B/C/D/H/F
-        res.kind = term_keyboard_arrow;
+        res.kind = term_input_arrow;
         res.data.arrow = buf[2];
       } else if (n >= 6 && buf[2] == '1' && buf[3] == ';') {
         // Modified keys: ESC [ 1 ; modifier final
         u8 modifier = buf[4] - '1'; // 0-based
         u8 final = buf[5];
 
-        res.kind = term_keyboard_arrow;
+        res.kind = term_input_arrow;
         res.data.modified.key = final;
         res.data.modified.shift = (modifier & 1) != 0;
         res.data.modified.alt = (modifier & 2) != 0;
@@ -185,44 +185,44 @@ term_keyboard term_getInput(float timeout_seconds) {
             break; // modifier follows
           }
         }
-        res.kind = term_keyboard_function;
+        res.kind = term_input_function;
         res.data.function_key = num;
       } else {
         // Unknown CSI sequence
-        res.kind = term_keyboard_unknown;
+        res.kind = term_input_unknown;
       }
     } else if (n == 3 && buf[1] == 'O') {
       // SS3 sequence: ESC O (alternate function/arrow keys)
       if (buf[2] >= 'P' && buf[2] <= 'S') {
         // F1-F4
-        res.kind = term_keyboard_function;
+        res.kind = term_input_function;
         res.data.function_key = buf[2] - 'P' + 1;
       } else if (buf[2] >= 'A' && buf[2] <= 'D') {
         // Arrow keys in application mode
-        res.kind = term_keyboard_arrow;
+        res.kind = term_input_arrow;
         res.data.arrow = buf[2];
       } else {
-        res.kind = term_keyboard_unknown;
+        res.kind = term_input_unknown;
       }
     } else if (n == 2) {
       // Alt + key: ESC key
-      res.kind = term_keyboard_alt;
+      res.kind = term_input_alt;
       res.data.modified.alt = true;
       res.data.modified.key = buf[1] & ~32; // uppercase
     } else {
       // Unknown escape sequence
-      res.kind = term_keyboard_unknown;
+      res.kind = term_input_unknown;
     }
   } else if (buf[0] < 32 && buf[0] != '\n' && buf[0] != '\r' &&
              buf[0] != '\t') {
     // Control character (Ctrl+A through Ctrl+Z = 1-26)
-    res.kind = term_keyboard_ctrl;
+    res.kind = term_input_ctrl;
     res.data.modified.ctrl = true;
     res.data.modified.key =
         buf[0] + '@'; // Convert to letter (1='A', 2='B', etc)
   } else {
     // Regular printable key
-    res.kind = term_keyboard_raw;
+    res.kind = term_input_raw;
     res.data.raw = buf[0];
   }
 
@@ -251,8 +251,8 @@ static DWORD old;
   SetConsoleMode(hInput, old);
 }
 
-term_keyboard term_getInput(float timeout_seconds) {
-  term_keyboard res = {0};
+term_input term_getInput(float timeout_seconds) {
+  term_input res = {0};
   HANDLE hInput = GetStdHandle(STD_INPUT_HANDLE);
 
   // Convert timeout to milliseconds
@@ -263,13 +263,13 @@ term_keyboard term_getInput(float timeout_seconds) {
 
   if (wait_result == WAIT_TIMEOUT) {
     // Timeout - no input available
-    res.kind = term_keyboard_none;
+    res.kind = term_input_none;
     return res;
   }
 
   if (wait_result != WAIT_OBJECT_0) {
     // Error
-    res.kind = term_keyboard_unknown;
+    res.kind = term_input_unknown;
     return res;
   }
 
@@ -278,13 +278,13 @@ term_keyboard term_getInput(float timeout_seconds) {
   DWORD read_count;
 
   if (!ReadConsoleInput(hInput, &ir, 1, &read_count) || read_count == 0) {
-    res.kind = term_keyboard_unknown;
+    res.kind = term_input_unknown;
     return res;
   }
 
   if (ir.EventType == MOUSE_EVENT) {
     MOUSE_EVENT_RECORD mer = ir.Event.MouseEvent;
-    res.kind = term_keyboard_mouse;
+    res.kind = term_input_mouse;
     res.data.mouse = (term_mouse){
         .row = mer.dwMousePosition.Y + 1,
         .col = mer.dwMousePosition.X + 1,
@@ -343,13 +343,13 @@ term_keyboard term_getInput(float timeout_seconds) {
 
   // Handle special keys
   if (ker.wVirtualKeyCode >= VK_F1 && ker.wVirtualKeyCode <= VK_F12) {
-    res.kind = term_keyboard_function;
+    res.kind = term_input_function;
     res.data.function_key = ker.wVirtualKeyCode - VK_F1 + 1;
     return res;
   }
 
   if (ker.wVirtualKeyCode >= VK_LEFT && ker.wVirtualKeyCode <= VK_DOWN) {
-    res.kind = term_keyboard_arrow;
+    res.kind = term_input_arrow;
     res.data.modified.ctrl = ctrl;
     res.data.modified.shift = shift;
     res.data.modified.alt = alt;
@@ -372,14 +372,14 @@ term_keyboard term_getInput(float timeout_seconds) {
   }
 
   if (ker.wVirtualKeyCode == VK_HOME) {
-    res.kind = term_keyboard_arrow;
-    res.data.arrow = term_keyboard_home;
+    res.kind = term_input_arrow;
+    res.data.arrow = term_input_home;
     return res;
   }
 
   if (ker.wVirtualKeyCode == VK_END) {
-    res.kind = term_keyboard_arrow;
-    res.data.arrow = term_keyboard_end;
+    res.kind = term_input_arrow;
+    res.data.arrow = term_input_end;
     return res;
   }
 
@@ -387,12 +387,12 @@ term_keyboard term_getInput(float timeout_seconds) {
   WCHAR ch = ker.uChar.UnicodeChar;
 
   if (ch == 0) {
-    res.kind = term_keyboard_unknown;
+    res.kind = term_input_unknown;
     return res;
   }
 
   if (ch > 127) {
-    res.kind = term_keyboard_raw;
+    res.kind = term_input_raw;
     res.data.raw = '?';
     return res;
   }
@@ -400,7 +400,7 @@ term_keyboard term_getInput(float timeout_seconds) {
   u8 ascii = (u8)ch;
 
   if (ctrl && !alt && ascii >= 1 && ascii <= 26) {
-    res.kind = term_keyboard_ctrl;
+    res.kind = term_input_ctrl;
     res.data.modified.ctrl = true;
     res.data.modified.shift = shift;
     res.data.modified.key = ascii + '@';
@@ -408,7 +408,7 @@ term_keyboard term_getInput(float timeout_seconds) {
   }
 
   if (alt && ascii >= 32) {
-    res.kind = term_keyboard_alt;
+    res.kind = term_input_alt;
     res.data.modified.alt = true;
     res.data.modified.ctrl = ctrl;
     res.data.modified.shift = shift;
@@ -416,19 +416,19 @@ term_keyboard term_getInput(float timeout_seconds) {
     return res;
   }
 
-  res.kind = term_keyboard_raw;
+  res.kind = term_input_raw;
   res.data.raw = ascii;
   return res;
 }
 #endif
-REGISTER_PRINTER(term_keyboard, {
+REGISTER_PRINTER(term_input, {
   PUTS(L"{");
   switch (in.kind) {
-    case term_keyboard_raw:
+    case term_input_raw:
       PUTS(L"raw:");
       USETYPEPRINTER(char, (char)in.data.raw);
       break;
-    case term_keyboard_ctrl:
+    case term_input_ctrl:
       PUTS(L"ctrl:");
       if (in.data.modified.shift)
         PUTS(L"S+");
@@ -436,7 +436,7 @@ REGISTER_PRINTER(term_keyboard, {
         PUTS(L"A+");
       USETYPEPRINTER(char, (char)in.data.modified.key);
       break;
-    case term_keyboard_alt:
+    case term_input_alt:
       PUTS(L"alt:");
       if (in.data.modified.ctrl)
         PUTS(L"C+");
@@ -444,7 +444,7 @@ REGISTER_PRINTER(term_keyboard, {
         PUTS(L"S+");
       USETYPEPRINTER(char, (char)in.data.modified.key);
       break;
-    case term_keyboard_arrow:
+    case term_input_arrow:
       PUTS(L"arrow:");
       if (in.data.modified.ctrl)
         PUTS(L"C+");
@@ -453,40 +453,40 @@ REGISTER_PRINTER(term_keyboard, {
       if (in.data.modified.alt)
         PUTS(L"A+");
       switch (in.data.arrow) {
-        case term_keyboard_up:
+        case term_input_up:
           PUTS(L"↑");
           break;
-        case term_keyboard_down:
+        case term_input_down:
           PUTS(L"↓");
           break;
-        case term_keyboard_left:
+        case term_input_left:
           PUTS(L"←");
           break;
-        case term_keyboard_right:
+        case term_input_right:
           PUTS(L"→");
           break;
-        case term_keyboard_home:
+        case term_input_home:
           PUTS(L"Home");
           break;
-        case term_keyboard_end:
+        case term_input_end:
           PUTS(L"End");
           break;
         default:
           USETYPEPRINTER(char, (char)in.data.arrow);
       }
       break;
-    case term_keyboard_function:
+    case term_input_function:
       PUTS(L"F");
       USETYPEPRINTER(int, in.data.function_key);
       break;
-    case term_keyboard_mouse:
+    case term_input_mouse:
       PUTS(L"mouse:");
       USENAMEDPRINTER("term_mouse", in.data.mouse);
       break;
-    case term_keyboard_none:
+    case term_input_none:
       PUTS(L"none");
       break;
-    case term_keyboard_unknown:
+    case term_input_unknown:
       PUTS(L"unknown");
       break;
   }

@@ -19,7 +19,8 @@ pub fn build(b: *std.Build) void {
     });
     //c game of life
     exe.addCSourceFile(.{
-        .file = b.path("gol.c"),
+        .file = b.path("moveBench.c"),
+        .flags = &.{ "-w", "-g" },
     });
 
     exe.addIncludePath(b.path("."));
@@ -27,7 +28,7 @@ pub fn build(b: *std.Build) void {
     exe.addCSourceFile(.{
         .file = b.path("include.c"),
         .flags = &.{
-            "-w",
+            "-w", "-g",
             if (target.result.os.tag != .windows)
                 "-D_XOPEN_SOURCE=700"
             else

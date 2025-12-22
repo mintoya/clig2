@@ -52,6 +52,7 @@ typedef enum : u8 {
 } term_cell_flags;
 
 // workaround for bitfield
+// make a copy
 const term_cell *term_makeCell(wchar character, term_color fg, term_color bg, term_cell_flags f);
 term_color term_color_fromIdx(u8 hex);
 static inline term_color term_color_fromHex(u32 hex);
@@ -60,15 +61,51 @@ void term_render(void);
 // clears the cell storage
 // should use this if youre rendering everything every frame
 void term_dump(void);
+
 __attribute__((hot)) void term_setCell(struct term_position, term_cell cell);
 __attribute__((hot)) void term_setCell_Ref(struct term_position pos, const struct term_cell *cell);
-struct term_position get_terminal_size(void);
+
+void term_setLine(term_position start, term_cell design, u8 *ptr, usize length);
+void term_setLineW(term_position start, term_cell design, wchar *ptr, usize length);
+void term_setLineRef(term_position start, term_cell *design, u8 *ptr, usize length);
+void term_setLineWRef(term_position start, term_cell *design, wchar *ptr, usize length);
+
+struct term_position term_getTsize(void);
 #endif // MY_TUI_H
 
 #if (defined(__INCLUDE_LEVEL__) && __INCLUDE_LEVEL__ == 0)
 #define MY_TUI_C
 #endif
 #ifdef MY_TUI_C
+
+void term_setLineRef(
+    term_position start,
+    term_cell *design,
+    u8 *ptr,
+    usize length
+) {
+  term_position pos = start;
+  term_cell cell = *design;
+  for (usize i = 0; i < length; ++i) {
+    cell.c = (wchar)ptr[i];
+    term_setCell(pos, cell);
+    pos.col++;
+  }
+}
+void term_setLineWRef(
+    term_position start,
+    term_cell *design,
+    wchar *ptr,
+    usize length
+) {
+  term_position pos = start;
+  term_cell cell = *design;
+  for (usize i = 0; i < length; ++i) {
+    cell.c = ptr[i];
+    term_setCell(pos, cell);
+    pos.col++;
+  }
+}
 
 const term_cell *term_makeCell(wchar character, term_color fg, term_color bg, term_cell_flags f) {
   static thread_local term_cell res = {0};
@@ -140,7 +177,7 @@ bool coloreq(struct term_color a, struct term_color b) {
 
 #if defined(_WIN32)
   #include <windows.h>
-struct term_position get_terminal_size() {
+struct term_position term_getTsize() {
   struct term_position size = {0, 0};
 
   CONSOLE_SCREEN_BUFFER_INFO csbi;
@@ -168,7 +205,7 @@ int wwidth(wchar wc) {
 // [[gnu::constructor]] void rawConsoleSetup() {
 //   fcntl(STDOUT_FILENO, F_SETFL, 0x4000);
 // }
-struct term_position get_terminal_size() {
+struct term_position term_getTsize() {
   struct term_position size = {0, 0};
 
   struct winsize ws;
@@ -245,8 +282,8 @@ void convertwrite(wchar_t *data, usize len) {
 }
 static_assert(sizeof(term_position) == sizeof(term_cell), "add alignment handling ");
 [[gnu::constructor]] void term_setup(void) {
-  u32 r = get_terminal_size().row;
-  u32 c = get_terminal_size().col;
+  u32 r = term_getTsize().row;
+  u32 c = term_getTsize().col;
   back_buffer = HHMap_new(
       sizeof(term_position),
       sizeof(term_cell),
@@ -272,14 +309,17 @@ void L_fgcolor(List *printList, struct term_color fg) {
   typeof(fg) currentfg = fg;
   switch (currentfg.tag) {
     case term_color_idx: {
-      List_resize(printList, printList->length + 64);
-      printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[38;5;%dm", (int)currentfg.color.colorIDX);
-    } break;
-    case term_color_full: {
-      List_resize(printList, printList->length + 64);
+      List_resize(printList, printList->length + 18);
       printList->length += swprintf(
           (wchar *)List_getRefForce(printList, printList->length),
-          64,
+          18, L"\033[38;5;%dm", (int)currentfg.color.colorIDX
+          );
+    } break;
+    case term_color_full: {
+      List_resize(printList, printList->length + 40);
+      printList->length += swprintf(
+          (wchar *)List_getRefForce(printList, printList->length),
+          40,
           L"\033[38;2;%d;%d;%dm",
           (int)currentfg.color.r,
           (int)currentfg.color.g,
@@ -295,12 +335,16 @@ void L_bgcolor(List *printList, struct term_color bg) {
   typeof(bg) currentbg = bg;
   switch (currentbg.tag) {
     case term_color_idx: {
-      List_resize(printList, printList->length + 64);
-      printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[48;5;%dm", (int)currentbg.color.colorIDX);
+      List_resize(printList, printList->length + 18);
+      printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 18, L"\033[48;5;%dm", (int)currentbg.color.colorIDX);
     } break;
     case term_color_full: {
-      List_resize(printList, printList->length + 64);
-      printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[48;2;%d;%d;%dm", (int)currentbg.color.r, (int)currentbg.color.g, (int)currentbg.color.b);
+      List_resize(printList, printList->length + 40);
+      printList->length += swprintf(
+          (wchar *)List_getRefForce(printList, printList->length),
+          40, L"\033[48;2;%d;%d;%dm", 
+          (int)currentbg.color.r, (int)currentbg.color.g, (int)currentbg.color.b
+       );
     } break;
     default: {
       List_resize(printList, printList->length + 64);
@@ -347,7 +391,7 @@ void L_addStyle(List *l, term_cell c, term_cell last) {
 }
 void term_render(void) {
   static struct term_position last = {0, 0};
-  struct term_position recent = get_terminal_size();
+  struct term_position recent = term_getTsize();
 
   static List *printList = NULL;
 
@@ -385,9 +429,12 @@ void term_render(void) {
           position->col < recent.col && position->row < recent.row &&
           position->row > -1 && position->col > -1
       ) {
-        List_resize(printList, printList->length + 64);
-        printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[%d;%dH", position->row + 1, position->col + 1);
-
+        List_resize(printList, printList->length + 24);
+        printList->length += swprintf(
+            (wchar *)List_getRefForce(printList, printList->length),
+            24,
+            L"\033[%d;%dH", position->row + 1, position->col + 1
+            );
         if (cell->inverse) {
           term_color t = currentbg;
           currentbg = currentfg;

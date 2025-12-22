@@ -30,10 +30,11 @@ void gol_tick(golScreen *s) {
     s->screens[i] <<= 1;
 }
 
-void draw_gol(term_element *objptr, const term_keyboard *input) {
+void draw_gol(term_element *objptr, const term_input *input) {
   static bool hasrun = false;
   golScreen *selfptr = (golScreen *)objptr->arb;
-  for (u32 i = 0; i < selfptr->size.row; i++)
+  for (u32 i = 0; i < selfptr->size.row; i++) {
+    u8 lastResult = 0;
     for (u32 j = 0; j * 2 < selfptr->size.col; j++) {
       u8 alive = 0;
 
@@ -51,44 +52,38 @@ void draw_gol(term_element *objptr, const term_keyboard *input) {
       static bool stalive[9] = {0, 0, 1, 1, 0, 0, 0, 0, 0};
       static bool stdead[9] = {0, 0, 0, 1, 0, 0, 0, 0, 0};
 
-      if (hasrun)
-        if (lastState) {
-          gol_setPoint(selfptr, i, j, stalive[alive]);
-        } else {
-          gol_setPoint(selfptr, i, j, stdead[alive]);
-        }
-      else
-        gol_setPoint(selfptr, i, j, rand() % 100 < 10);
-
-      // term_setCell(
-      //     (term_position){i, j * 2},
-      //     (term_cell){
-      //         .bg = term_color_fromIdx(0),
-      //         .fg = term_color_fromIdx(255),
-      //         .c = L' ',
-      //         .visible = 1,
-      //         .inverse = lastState,
-      //     }
-      // );
-      term_setCell_Ref(
-          (term_position){i, j * 2},
-          term_makeCell(
-              L' ',
-              term_color_fromIdx(0), term_color_fromIdx(255),
-              term_cell_VISIBLE | (lastState ? 0 : term_cell_INVERSE)
-          )
-      );
-      term_setCell(
-          (term_position){i, j * 2 + 1},
-          (term_cell){
-              .bg = term_color_fromIdx(0),
-              .fg = term_color_fromIdx(255),
-              .c = L' ',
-              .visible = 1,
-              .inverse = lastState,
+      {
+        if (hasrun)
+          if (lastState) {
+            gol_setPoint(selfptr, i, j, stalive[alive]);
+          } else {
+            gol_setPoint(selfptr, i, j, stdead[alive]);
           }
-      );
+        else
+          gol_setPoint(selfptr, i, j, rand() % 100 < 10);
+        if (lastState) {
+          term_setCell_Ref(
+              (term_position){i, j * 2},
+              &(term_cell){
+                  .fg = term_color_fromIdx(0),
+                  .bg = term_color_fromIdx(255),
+                  .c = L' ',
+                  .visible = 1,
+              }
+          );
+          term_setCell_Ref(
+              (term_position){i, j * 2 + 1},
+              &(term_cell){
+                  .fg = term_color_fromIdx(0),
+                  .bg = term_color_fromIdx(255),
+                  .c = L' ',
+                  .visible = 1,
+              }
+          );
+        }
+      }
     }
+  }
   gol_tick(selfptr);
   hasrun = true;
 }
@@ -112,6 +107,6 @@ term_element *gol(void) {
 int main(void) {
   add_element(gol());
   while (1) {
-    term_renderElements(term_getInput(10));
+    term_renderElements(term_getInput(0));
   }
 }
