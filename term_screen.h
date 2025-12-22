@@ -237,7 +237,7 @@ static bool justdumped = false;
 extern int nanosleep(const struct timespec *request, struct timespec *remain);
 // not benchmarked
 // assuming MB_CUR_MAX never changes
-void convertwrite(wchar_t *data, usize len) {
+__attribute__((hot)) void convertwrite(wchar_t *data, usize len) {
   static char *u8data = NULL;
   static usize u8cap = 0;
 
@@ -313,7 +313,7 @@ void L_fgcolor(List *printList, struct term_color fg) {
       printList->length += swprintf(
           (wchar *)List_getRefForce(printList, printList->length),
           18, L"\033[38;5;%dm", (int)currentfg.color.colorIDX
-          );
+      );
     } break;
     case term_color_full: {
       List_resize(printList, printList->length + 40);
@@ -342,9 +342,9 @@ void L_bgcolor(List *printList, struct term_color bg) {
       List_resize(printList, printList->length + 40);
       printList->length += swprintf(
           (wchar *)List_getRefForce(printList, printList->length),
-          40, L"\033[48;2;%d;%d;%dm", 
+          40, L"\033[48;2;%d;%d;%dm",
           (int)currentbg.color.r, (int)currentbg.color.g, (int)currentbg.color.b
-       );
+      );
     } break;
     default: {
       List_resize(printList, printList->length + 64);
@@ -434,7 +434,7 @@ void term_render(void) {
             (wchar *)List_getRefForce(printList, printList->length),
             24,
             L"\033[%d;%dH", position->row + 1, position->col + 1
-            );
+        );
         if (cell->inverse) {
           term_color t = currentbg;
           currentbg = currentfg;

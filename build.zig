@@ -4,7 +4,7 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
 
     const optimize = b.standardOptimizeOption(.{
-        .preferred_optimize_mode = .Debug,
+        .preferred_optimize_mode = .ReleaseFast,
     });
 
     // zig test
@@ -20,7 +20,7 @@ pub fn build(b: *std.Build) void {
     //c game of life
     exe.addCSourceFile(.{
         .file = b.path("moveBench.c"),
-        .flags = &.{ "-w", "-g" },
+        .flags = &.{ "-w", "-g", "-O3" },
     });
 
     exe.addIncludePath(b.path("."));
@@ -28,7 +28,7 @@ pub fn build(b: *std.Build) void {
     exe.addCSourceFile(.{
         .file = b.path("include.c"),
         .flags = &.{
-            "-w", "-g",
+            "-w", "-g", "-O3",
             if (target.result.os.tag != .windows)
                 "-D_XOPEN_SOURCE=700"
             else
