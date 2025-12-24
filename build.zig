@@ -17,10 +17,14 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
-    //c game of life
     exe.addCSourceFile(.{
-        .file = b.path("moveBench.c"),
-        .flags = &.{ "-w", "-g", "-O3" },
+        .file = b.path("editor.c"),
+        .flags = &.{
+            "-w",
+            "-g",
+            "-fblocks",
+            "-fno-omit-frame-pointer",
+        },
     });
 
     exe.addIncludePath(b.path("."));
@@ -28,7 +32,9 @@ pub fn build(b: *std.Build) void {
     exe.addCSourceFile(.{
         .file = b.path("include.c"),
         .flags = &.{
-            "-w", "-g", "-O3",
+            "-g",
+            "-fno-omit-frame-pointer",
+            "-w",
             if (target.result.os.tag != .windows)
                 "-D_XOPEN_SOURCE=700"
             else

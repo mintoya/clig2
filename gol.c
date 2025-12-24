@@ -1,53 +1,55 @@
-#define LIST_NOCHECKS
-#include "term_elements.h"
 #include "term_input.h"
 #include "term_screen.h"
+#include "wheels/allocator.h"
 #include <stdlib.h>
 
-typedef struct golScreen {
+static struct golScreen {
   term_position size;
   u8 screens[];
-} golScreen;
+} *golScreen = NULL;
 
-void gol_setPoint(golScreen *s, u32 row, u32 col, bool val) {
-  if (row >= s->size.row || col >= s->size.col)
+void gol_setPoint(u32 row, u32 col, bool val) {
+  if (row >= golScreen->size.row || col >= golScreen->size.col)
     return;
 
-  u32 idx = row * s->size.col + col;
+  u32 idx = row * golScreen->size.col + col;
 
-  s->screens[idx] &= ~1;
+  golScreen->screens[idx] &= ~1;
   if (val)
-    s->screens[idx] |= 1;
+    golScreen->screens[idx] |= 1;
 }
-
-bool gol_getLastPoint(golScreen *s, u32 row, u32 col) {
-  if (row >= s->size.row || col >= s->size.col)
+bool gol_getLastPoint(u32 row, u32 col) {
+  if (row >= golScreen->size.row || col >= golScreen->size.col)
     return false;
-  return (s->screens[row * s->size.col + col] & 2) && 1;
+  return (golScreen->screens[row * golScreen->size.col + col] & 2) && 1;
 }
-void gol_tick(golScreen *s) {
-  for (u32 i = 0; i < s->size.col * s->size.row; i++)
-    s->screens[i] <<= 1;
+void gol_tick() {
+  for (u32 i = 0; i < golScreen->size.col * golScreen->size.row; i++)
+    golScreen->screens[i] <<= 1;
 }
 
-void draw_gol(term_element *objptr, const term_input *input) {
+void draw_gol() {
   static bool hasrun = false;
-  golScreen *selfptr = (golScreen *)objptr->arb;
-  for (u32 i = 0; i < selfptr->size.row; i++) {
+  if (!golScreen) {
+    term_position size = term_getTsize();
+    golScreen = aAlloc(defaultAlloc, sizeof(*golScreen) + size.col * size.row);
+    golScreen->size = size;
+  }
+  for (u32 i = 0; i < golScreen->size.row; i++) {
     u8 lastResult = 0;
-    for (u32 j = 0; j * 2 < selfptr->size.col; j++) {
+    for (u32 j = 0; j * 2 < golScreen->size.col; j++) {
       u8 alive = 0;
 
-      alive += gol_getLastPoint(selfptr, i - 1, j - 1);
-      alive += gol_getLastPoint(selfptr, i - 1, j);
-      alive += gol_getLastPoint(selfptr, i - 1, j + 1);
-      alive += gol_getLastPoint(selfptr, i, j + 1);
-      alive += gol_getLastPoint(selfptr, i + 1, j - 1);
-      alive += gol_getLastPoint(selfptr, i + 1, j);
-      alive += gol_getLastPoint(selfptr, i + 1, j + 1);
-      alive += gol_getLastPoint(selfptr, i, j - 1);
+      alive += gol_getLastPoint(i - 1, j - 1);
+      alive += gol_getLastPoint(i - 1, j);
+      alive += gol_getLastPoint(i - 1, j + 1);
+      alive += gol_getLastPoint(i, j + 1);
+      alive += gol_getLastPoint(i + 1, j - 1);
+      alive += gol_getLastPoint(i + 1, j);
+      alive += gol_getLastPoint(i + 1, j + 1);
+      alive += gol_getLastPoint(i, j - 1);
 
-      bool lastState = gol_getLastPoint(selfptr, i, j);
+      bool lastState = gol_getLastPoint(i, j);
 
       static bool stalive[9] = {0, 0, 1, 1, 0, 0, 0, 0, 0};
       static bool stdead[9] = {0, 0, 0, 1, 0, 0, 0, 0, 0};
@@ -55,18 +57,18 @@ void draw_gol(term_element *objptr, const term_input *input) {
       {
         if (hasrun)
           if (lastState) {
-            gol_setPoint(selfptr, i, j, stalive[alive]);
+            gol_setPoint(i, j, stalive[alive]);
           } else {
-            gol_setPoint(selfptr, i, j, stdead[alive]);
+            gol_setPoint(i, j, stdead[alive]);
           }
         else
-          gol_setPoint(selfptr, i, j, rand() % 100 < 10);
+          gol_setPoint(i, j, rand() % 100 < 10);
         if (lastState) {
           term_setCell_Ref(
               (term_position){i, j * 2},
               &(term_cell){
-                  .fg = term_color_fromIdx(0),
-                  .bg = term_color_fromIdx(255),
+                  .fg = term_color_fromIdx(1),
+                  .bg = term_color_fromIdx(67),
                   .c = L' ',
                   .visible = 1,
               }
@@ -74,8 +76,8 @@ void draw_gol(term_element *objptr, const term_input *input) {
           term_setCell_Ref(
               (term_position){i, j * 2 + 1},
               &(term_cell){
-                  .fg = term_color_fromIdx(0),
-                  .bg = term_color_fromIdx(255),
+                  .fg = term_color_fromIdx(1),
+                  .bg = term_color_fromIdx(67),
                   .c = L' ',
                   .visible = 1,
               }
@@ -84,29 +86,14 @@ void draw_gol(term_element *objptr, const term_input *input) {
       }
     }
   }
-  gol_tick(selfptr);
+  gol_tick();
   hasrun = true;
 }
-term_element *gol(void) {
-  term_position screenSize = get_terminal_size();
-  term_element *res = aCreate(defaultAlloc, term_element);
-
-  golScreen *ptr = aAlloc(
-      defaultAlloc,
-      sizeof(golScreen) +
-          sizeof(ptr->screens[0]) * screenSize.col * screenSize.row
-  );
-  ptr->size = screenSize;
-
-  *res = (term_element){
-      .render = draw_gol,
-      .arb = ptr,
-  };
-  return res;
-}
 int main(void) {
-  add_element(gol());
   while (1) {
-    term_renderElements(term_getInput(0));
+    // term_input ti = term_getInput(10);
+    draw_gol();
+    term_render();
+    term_dump();
   }
 }

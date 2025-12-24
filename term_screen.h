@@ -55,7 +55,7 @@ typedef enum : u8 {
 // make a copy
 const term_cell *term_makeCell(wchar character, term_color fg, term_color bg, term_cell_flags f);
 term_color term_color_fromIdx(u8 hex);
-static inline term_color term_color_fromHex(u32 hex);
+term_color term_color_fromHex(u32 hex);
 bool coloreq(struct term_color a, struct term_color b);
 void term_render(void);
 // clears the cell storage
@@ -130,7 +130,7 @@ const term_cell *term_makeCell(wchar character, term_color fg, term_color bg, te
 static bool poseq(term_position a, term_position b) {
   return (a.col == b.col && a.row == b.row);
 }
-static inline term_color term_color_fromHex(u32 hex) {
+term_color term_color_fromHex(u32 hex) {
   return (term_color){
       .color = {
           .r = (u8)((hex & 0xff0000) >> 0x10),
@@ -305,29 +305,33 @@ __attribute__((hot)) void term_setCell(struct term_position pos, term_cell cell)
 // will break if mp_cur_max ever changes
 // appends wchar to place+len, then increments len
 #include <time.h>
+void L_addUint(List *l, u32 i) {
+  static wchar look[10];
+  u8 len = 0;
+  for (len = 0; i; len++, i /= 10)
+    look[9 - len] = L'0' + i % 10;
+  List_appendFromArr(l, look + 10 - len, (usize)len);
+}
 void L_fgcolor(List *printList, struct term_color fg) {
   typeof(fg) currentfg = fg;
   switch (currentfg.tag) {
     case term_color_idx: {
       List_resize(printList, printList->length + 18);
-      printList->length += swprintf(
-          (wchar *)List_getRefForce(printList, printList->length),
-          18, L"\033[38;5;%dm", (int)currentfg.color.colorIDX
-      );
+      List_appendFromArr(printList, L"\033[38;5;", 7);
+      L_addUint(printList, currentfg.color.colorIDX);
+      List_appendFromArr(printList, L"m", 1);
     } break;
     case term_color_full: {
-      List_resize(printList, printList->length + 40);
-      printList->length += swprintf(
-          (wchar *)List_getRefForce(printList, printList->length),
-          40,
-          L"\033[38;2;%d;%d;%dm",
-          (int)currentfg.color.r,
-          (int)currentfg.color.g,
-          (int)currentfg.color.b
-      );
+      List_appendFromArr(printList, L"\033[38;2;", 7);
+      L_addUint(printList, currentfg.color.r);
+      List_append(printList, L";");
+      L_addUint(printList, currentfg.color.g);
+      List_append(printList, L";");
+      L_addUint(printList, currentfg.color.b);
+      List_append(printList, L"m");
     } break;
     default: {
-      List_appendFromArr(printList, L"\033[39m", 6);
+      List_appendFromArr(printList, L"\033[39m", 5);
     } break;
   }
 }
@@ -335,20 +339,21 @@ void L_bgcolor(List *printList, struct term_color bg) {
   typeof(bg) currentbg = bg;
   switch (currentbg.tag) {
     case term_color_idx: {
-      List_resize(printList, printList->length + 18);
-      printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 18, L"\033[48;5;%dm", (int)currentbg.color.colorIDX);
+      List_appendFromArr(printList, L"\033[48;5;", 7);
+      L_addUint(printList, currentbg.color.colorIDX);
+      List_appendFromArr(printList, L"m", 1);
     } break;
     case term_color_full: {
-      List_resize(printList, printList->length + 40);
-      printList->length += swprintf(
-          (wchar *)List_getRefForce(printList, printList->length),
-          40, L"\033[48;2;%d;%d;%dm",
-          (int)currentbg.color.r, (int)currentbg.color.g, (int)currentbg.color.b
-      );
+      List_appendFromArr(printList, L"\033[48;2;", 7);
+      L_addUint(printList, currentbg.color.r);
+      List_append(printList, L";");
+      L_addUint(printList, currentbg.color.g);
+      List_append(printList, L";");
+      L_addUint(printList, currentbg.color.b);
+      List_append(printList, L"m");
     } break;
     default: {
-      List_resize(printList, printList->length + 64);
-      printList->length += swprintf((wchar *)List_getRefForce(printList, printList->length), 64, L"\033[49m");
+      List_appendFromArr(printList, L"\033[49m", 5);
     } break;
   }
 }
@@ -388,6 +393,13 @@ void L_addStyle(List *l, term_cell c, term_cell last) {
     List_appendFromArr(l, L"\033[9m", 4);
   else if (last.strikethrough)
     List_appendFromArr(l, L"\033[29m", 5);
+}
+void L_addPos(List *l, term_position p) {
+  List_appendFromArr(l, L"\033[", 2);
+  L_addUint(l, p.row + 1);
+  List_append(l, L";");
+  L_addUint(l, p.col + 1);
+  List_append(l, L"H");
 }
 void term_render(void) {
   static struct term_position last = {0, 0};
@@ -429,12 +441,7 @@ void term_render(void) {
           position->col < recent.col && position->row < recent.row &&
           position->row > -1 && position->col > -1
       ) {
-        List_resize(printList, printList->length + 24);
-        printList->length += swprintf(
-            (wchar *)List_getRefForce(printList, printList->length),
-            24,
-            L"\033[%d;%dH", position->row + 1, position->col + 1
-        );
+        L_addPos(printList, *position);
         if (cell->inverse) {
           term_color t = currentbg;
           currentbg = currentfg;

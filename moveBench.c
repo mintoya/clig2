@@ -15,19 +15,25 @@ u8 udist(term_position a, term_position b) {
 }
 void render_circles(const term_input *input) {
   static term_position center = {0};
-  if (input->kind == term_input_mouse)
+  bool click = false;
+  if (input->kind == term_input_mouse) {
     center = (term_position){
         input->data.mouse.row,
         input->data.mouse.col,
     };
+    if (input->data.mouse.code.known == term_mouse_left && input->data.mouse.state == term_mouse_down) {
+      click = true;
+    }
+  }
   term_position termsize = term_getTsize();
   for (u32 i = 1; i < termsize.row; i++) {
     for (u32 j = 1; j < termsize.col; j++) {
       u8 dist = udist((term_position){i, j}, center);
+      dist *= click ? -1 : 1;
       term_setCell_Ref(
           (term_position){i, j},
           term_makeCell(
-              L' ', term_color_fromIdx(dist), term_color_fromIdx(dist),
+              L'x', term_color_fromIdx(255-dist), term_color_fromIdx(dist),
               term_cell_VISIBLE
           )
       );
