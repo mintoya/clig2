@@ -2,7 +2,11 @@
 #include "term_screen.h"
 #include "wheels/my-list.h"
 #include "wheels/print.h"
-#include <dirent.h>
+#ifdef _WIN32
+  #include "wheels/dirent/dirent.h"
+#else
+  #include <dirent.h>
+#endif
 #include <stdio.h>
 #include <string.h>
 #include <wchar.h>
@@ -31,8 +35,13 @@ void beginEdit(
 ) {
   term_position ts = term_getTsize();
   editorData.filename = filename;
-  editorData.file = fopen(filename, "rb+");
-  flockfile(editorData.file);
+#ifdef _WIN32
+  editorData.file = fopen(filename, "rt+, ccs=UTF-8");
+#else
+  editorData.file = fopen(filename, "rt+");
+#endif
+  // flockfile(editorData.file);
+  // _lock_file(editorData.file);
   editorData.known = HHMap_new(sizeof(usize), sizeof(line), defaultAlloc, 1000);
   usize nCurrentLine = 0;
   List currentLine;
@@ -89,8 +98,10 @@ int main(int narg, char **arg) {
   }
   DIR *Dir = opendir(pwd);
   struct dirent *d = readdir(Dir);
-  while (d && strcmp(d->d_name, arg[1]))
+  while (d && strcmp(d->d_name, arg[1])) {
     d = readdir(Dir);
+    println("{cstr}", (char *)d->d_name);
+  }
   if (!d) {
     println("couldnt find file");
     return 1;
@@ -100,6 +111,5 @@ int main(int narg, char **arg) {
     return 1;
   }
   beginEdit(d->d_name);
-
   return 0;
 }
