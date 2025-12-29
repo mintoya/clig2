@@ -3,6 +3,7 @@
 #include "wheels/my-list.h"
 #include "wheels/omap.h"
 #include "wheels/print.h"
+#include <time.h>
 #define MY_TUI_C
 #include "term_screen.h"
 #define MY_TERM_INPUT_C
@@ -103,19 +104,12 @@ void draw_box(
     term_setCell((term_position){row, right}, style);
   }
 }
-void dirBox(term_position pos, term_position size, stringList *directory) {
+void dirBox(term_position pos, term_position size, stringList *directory, fptr selected) {
   Arena_scoped *arenav = arena_new_ext(defaultAlloc, 1024);
   List *pathc = List_new(arenav, sizeof(char));
   assemblePath(directory, pathc);
   List_append(pathc, NULL);
-  DIR *dir = opendir((char *)pathc->head);
-  stringList *content = stringList_new(arenav);
-  for (struct dirent *d = readdir(dir);
-       d;
-       d = readdir(dir)) {
-    stringList_append(content, fptr_fromCS(d->d_name));
-  }
-  closedir(dir);
+  DIR_scoped *dir = opendir((char *)pathc->head);
   draw_box(
       pos, size,
       *term_makeCell(
@@ -124,19 +118,23 @@ void dirBox(term_position pos, term_position size, stringList *directory) {
           (term_color){0},
           term_cell_VISIBLE
       ),
-      L'+', L'+', L'+', L'+',
-      L'-', L'|'
+      L'╭', L'╮', L'╰', L'╯',
+      L'─', L'│'
   );
   term_position place = (term_position){pos.row + 1, pos.col + 1};
-  for (usize i = 0; i < stringList_length(content); i++) {
-    fptr name = stringList_get(content, i);
+  for (struct dirent *d = readdir(dir);
+       d;
+       d = readdir(dir)) {
+    fptr name = fptr_fromCS(d->d_name);
+    bool same = fptr_eq(selected, name);
     term_setLineM(
         place,
         *term_makeCell(
             L' ',
             term_color_fromHex(0xffffff),
             (term_color){0},
-            term_cell_VISIBLE
+            term_cell_VISIBLE |
+                (same ? term_cell_INVERSE : 0)
         ),
         (char *)name.ptr,
         name.width
@@ -152,7 +150,7 @@ void drawSuper(stringList *path) {
   size.col--;
   size.row--;
   size.col /= 3;
-  dirBox((term_position){0}, size, paths);
+  dirBox((term_position){0}, size, paths, stringList_get(path, stringList_length(path) - 1));
 }
 void drawPath(stringList *path) {
   term_position size = term_getTsize();
@@ -160,7 +158,7 @@ void drawPath(stringList *path) {
   size.row--;
   size.col /= 3;
   term_position place = (term_position){0, size.col + 1};
-  dirBox(place, size, path);
+  dirBox(place, size, path, stringList_get(path, 0));
 }
 void drawSub(stringList *path, char *folderName) {
   stringList_scoped *paths = stringList_remake(path);
@@ -173,9 +171,11 @@ int main(int nargs, char **args) {
   getcwd(pwd, 300);
   stringList_scoped *path = parsePath(pwd, local);
 
-  for (uint i = 0; i < 1000000; i++) {
+  while (1) {
     drawSuper(path);
     drawPath(path);
     term_render();
+    term_dump();
+    term_getInput(1);
   }
 }
