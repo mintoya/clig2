@@ -15,32 +15,13 @@ pub fn build(b: *std.Build) void {
             .link_libc = true,
             .target = target,
             .optimize = optimize,
+            .sanitize_c = .full,
         }),
     });
-    exe.addCSourceFile(.{
-        .file = b.path("editor.c"),
-        .flags = &.{
-            "-w",
-            "-g",
-            "-fblocks",
-            "-fno-omit-frame-pointer",
-        },
-    });
 
-    exe.addIncludePath(b.path("."));
-
-    exe.addCSourceFile(.{
-        .file = b.path("include.c"),
-        .flags = &.{
-            "-g",
-            "-fno-omit-frame-pointer",
-            "-w",
-            if (target.result.os.tag != .windows)
-                "-D_XOPEN_SOURCE=700"
-            else
-                "",
-        },
-    });
+    exe.root_module.addCSourceFile(.{ .file = b.path("dirs.c"), .flags = &.{
+        "-w",
+    } });
 
     b.installArtifact(exe);
 

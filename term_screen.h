@@ -65,10 +65,8 @@ void term_dump(void);
 __attribute__((hot)) void term_setCell(struct term_position, term_cell cell);
 __attribute__((hot)) void term_setCell_Ref(struct term_position pos, const struct term_cell *cell);
 
-void term_setLine(term_position start, term_cell design, u8 *ptr, usize length);
-void term_setLineW(term_position start, term_cell design, wchar *ptr, usize length);
-void term_setLineRef(term_position start, term_cell *design, u8 *ptr, usize length);
-void term_setLineWRef(term_position start, term_cell *design, wchar *ptr, usize length);
+void term_setLine(term_position start, term_cell design, wchar *ptr, usize length);
+void term_setLineM(term_position start, term_cell design, char *ptr, usize length);
 
 struct term_position term_getTsize(void);
 #endif // MY_TUI_H
@@ -78,32 +76,16 @@ struct term_position term_getTsize(void);
 #endif
 #ifdef MY_TUI_C
 
-void term_setLineRef(
-    term_position start,
-    term_cell *design,
-    u8 *ptr,
-    usize length
-) {
-  term_position pos = start;
-  term_cell cell = *design;
-  for (usize i = 0; i < length; ++i) {
-    cell.c = (wchar)ptr[i];
-    term_setCell(pos, cell);
-    pos.col++;
+void term_setLine(term_position start, term_cell design, wchar *ptr, usize length) {
+  for (i64 i = start.col; ptr[i - start.col]; i++) {
+    design.c = ptr[i - start.col];
+    term_setCell((term_position){start.row, i}, design);
   }
 }
-void term_setLineWRef(
-    term_position start,
-    term_cell *design,
-    wchar *ptr,
-    usize length
-) {
-  term_position pos = start;
-  term_cell cell = *design;
-  for (usize i = 0; i < length; ++i) {
-    cell.c = ptr[i];
-    term_setCell(pos, cell);
-    pos.col++;
+void term_setLineM(term_position start, term_cell design, char *ptr, usize length) {
+  for (i64 i = start.col; i - start.col < length; i++) {
+    design.c = (char)ptr[i - start.col];
+    term_setCell((term_position){start.row, i}, design);
   }
 }
 
