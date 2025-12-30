@@ -65,8 +65,10 @@ void term_dump(void);
 __attribute__((hot)) void term_setCell(struct term_position, term_cell cell);
 __attribute__((hot)) void term_setCell_Ref(struct term_position pos, const struct term_cell *cell);
 
-void term_setLine(term_position start, term_cell design, wchar *ptr, usize length);
-void term_setLineM(term_position start, term_cell design, char *ptr, usize length);
+typedef enum {
+  term_line_center,
+} term_line_opt;
+void term_setLine(term_position start, term_cell design, wchar *ptr, usize length, usize max);
 
 struct term_position term_getTsize(void);
 #endif // MY_TUI_H
@@ -76,15 +78,14 @@ struct term_position term_getTsize(void);
 #endif
 #ifdef MY_TUI_C
 
-void term_setLine(term_position start, term_cell design, wchar *ptr, usize length) {
-  for (i64 i = start.col; ptr[i - start.col]; i++) {
+void term_setLine(term_position start, term_cell design, wchar *ptr, usize length, usize max) {
+  i64 i = start.col;
+  for (; ptr[i - start.col]; i++) {
     design.c = ptr[i - start.col];
     term_setCell((term_position){start.row, i}, design);
   }
-}
-void term_setLineM(term_position start, term_cell design, char *ptr, usize length) {
-  for (i64 i = start.col; i - start.col < length; i++) {
-    design.c = (char)ptr[i - start.col];
+  for (; i < start.col + max; i++) {
+    design.c = L' ';
     term_setCell((term_position){start.row, i}, design);
   }
 }
@@ -256,7 +257,7 @@ __attribute__((hot)) void convertwrite(wchar_t *data, usize len) {
 #endif
 
 #if defined(__linux__)
-  write(STDOUT_FILENO, u8data, wlen);
+  write(fileno(stdout), u8data, wlen);
 #else
   _write(_fileno(stdout), u8data, wlen);
 #endif
@@ -270,7 +271,7 @@ static_assert(sizeof(term_position) == sizeof(term_cell), "add alignment handlin
       sizeof(term_position),
       sizeof(term_cell),
       defaultAlloc,
-      r * c / 3
+      r * c / 3 + 1
   );
   setvbuf(stdout, NULL, _IONBF, 0);
   globalLog = fopen("tui.log", "a");
@@ -292,7 +293,10 @@ void L_addUint(List *l, u32 i) {
   u8 len = 0;
   for (len = 0; i; len++, i /= 10)
     look[9 - len] = L'0' + i % 10;
-  List_appendFromArr(l, look + 10 - len, (usize)len);
+  if (len)
+    List_appendFromArr(l, look + 10 - len, (usize)len);
+  else
+    List_append(l, L"0");
 }
 void L_fgcolor(List *printList, struct term_color fg) {
   typeof(fg) currentfg = fg;
@@ -346,6 +350,7 @@ bool styleeq(term_cell a, term_cell b) {
       a.italic == b.italic &&
       a.underline == b.underline &&
       a.blinking == b.blinking &&
+      a.inverse == b.inverse &&
       a.strikethrough == b.strikethrough
   );
 }

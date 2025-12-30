@@ -1,9 +1,10 @@
-#include "wheels/arenaAllocator.h"
 #include "wheels/fptr.h"
-#include "wheels/my-list.h"
-#include "wheels/omap.h"
-#include "wheels/print.h"
-#include <time.h>
+#include "wheels/stringList.h"
+#include <assert.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <wchar.h>
 #define MY_TUI_C
 #include "term_screen.h"
 #define MY_TERM_INPUT_C
@@ -17,14 +18,6 @@
   #include <dirent.h>
 #endif
 #include "wheels/wheels.h"
-
-void dircleanup(DIR **d) {
-  if (d && *d) {
-    closedir(*d);
-    *d = NULL;
-  }
-}
-#define DIR_scoped [[gnu::cleanup(dircleanup)]] DIR
 
 REGISTER_SPECIAL_PRINTER("dirent", struct dirent *, {
   PUTS(L"{");
@@ -43,31 +36,6 @@ REGISTER_SPECIAL_PRINTER("dirent", struct dirent *, {
   }
   PUTS(L"}");
 });
-
-stringList *parsePath(char *ds, AllocatorV allocator) {
-  stringList *res = stringList_new(allocator);
-  while (*ds) {
-    char *chr = ds;
-    while (*chr && *chr != JOINER)
-      chr++;
-    stringList_append(res, fptr_fromPL(ds, chr - ds));
-    ds = chr;
-    ds += *ds ? 1 : 0;
-  }
-
-  return res;
-}
-void assemblePath(stringList *sl, List *clist) {
-  assertMessage(clist && clist->width == sizeof(char));
-  clist->length = 0;
-  usize len = stringList_length(sl);
-  for (usize i = 0; i < len; i++) {
-    fptr d = stringList_get(sl, i);
-    if (i)
-      List_append(clist, REF(char, JOINER));
-    List_appendFromArr(clist, d.ptr, d.width);
-  }
-}
 void draw_box(
     term_position position,
     term_position size,
@@ -104,78 +72,230 @@ void draw_box(
     term_setCell((term_position){row, right}, style);
   }
 }
-void dirBox(term_position pos, term_position size, stringList *directory, fptr selected) {
-  Arena_scoped *arenav = arena_new_ext(defaultAlloc, 1024);
-  List *pathc = List_new(arenav, sizeof(char));
-  assemblePath(directory, pathc);
-  List_append(pathc, NULL);
-  DIR_scoped *dir = opendir((char *)pathc->head);
-  draw_box(
-      pos, size,
+// static return
+char *assembleDir(stringList *path) {
+  static List *l = NULL;
+  if (!l)
+    l = List_new(defaultAlloc, sizeof(char));
+  l->length = 0;
+  u32 len = stringList_length(path);
+  for (u32 i = 0; i < len; i++) {
+    fptr it = stringList_get(path, i);
+    List_appendFromArr(l, it.ptr, it.width);
+    // if (i + 1 != len)
+    List_append(l, REF(char, JOINER));
+  }
+  return (char *)l->head;
+}
+struct dirent *drawMainBox(DIR *directory, i8 direction) {
+  static DIR *last = NULL;
+
+  static List *dirList = NULL;
+  if (!dirList)
+    dirList = List_new(defaultAlloc, sizeof(struct dirent));
+
+  static i32 selected = 0;
+  if (last != directory) {
+    selected = 0;
+    dirList->length = 0;
+
+    struct dirent *d;
+    while ((d = readdir(directory))) {
+      List_append(dirList, d);
+    }
+
+    rewinddir(directory);
+  }
+  selected += direction;
+  if (dirList->length) {
+    if (selected > (i64)List_length(dirList)) {
+      selected = 0;
+    } else if (selected < 0) {
+      selected = List_length(dirList) - 1;
+    }
+  }
+
+  term_position size = term_getTsize();
+  size.col /= 3;
+  size.col--;
+  size.row--;
+  term_position position = (term_position){0, size.col};
+  term_cell style =
       *term_makeCell(
           L' ',
           term_color_fromHex(0xffffff),
-          (term_color){0},
+          (term_color){},
           term_cell_VISIBLE
-      ),
-      L'╭', L'╮', L'╰', L'╯',
+      );
+  term_cell selectedStyle = style;
+  selectedStyle.bg = term_color_fromHex(0xffffff);
+  selectedStyle.fg = term_color_fromHex(0x1);
+  draw_box(
+      position, size, style,
+      L'╭', L'╮',
+      L'╰', L'╯',
       L'─', L'│'
   );
-  term_position place = (term_position){pos.row + 1, pos.col + 1};
-  for (struct dirent *d = readdir(dir);
-       d;
-       d = readdir(dir)) {
-    fptr name = fptr_fromCS(d->d_name);
-    bool same = fptr_eq(selected, name);
-    term_setLineM(
-        place,
-        *term_makeCell(
-            L' ',
-            term_color_fromHex(0xffffff),
-            (term_color){0},
-            term_cell_VISIBLE |
-                (same ? term_cell_INVERSE : 0)
-        ),
-        (char *)name.ptr,
-        name.width
+
+  term_position pos = (term_position){position.row + 1, position.col + 1};
+  for (u32 i = 0; i < List_length(dirList); i++) {
+    wchar w[sizeof(((struct dirent *)NULL)->d_name) / sizeof(char)];
+    struct dirent *this = List_getRef(dirList, i);
+    mbstowcs(w, this->d_name, sizeof((struct dirent *)NULL)->d_name);
+    term_setLine(
+        pos, i == selected ? selectedStyle : style,
+        w, wcslen(w), size.col - 1
     );
-    place.row++;
+    pos.row++;
+  }
+
+  last = directory;
+  return List_getRef(dirList, selected);
+}
+void drawSubBox(DIR *directory, struct dirent *name, char *supername) {
+  if (!name)
+    return;
+  term_position size = term_getTsize();
+  size.col /= 3;
+  size.col--;
+  size.row--;
+  term_position position = (term_position){0, size.col * 2 + 1};
+  term_cell style =
+      *term_makeCell(
+          L' ',
+          term_color_fromHex(0xffffff),
+          (term_color){},
+          term_cell_VISIBLE
+      );
+  draw_box(
+      position, size, style,
+      L'╭', L'╮',
+      L'╰', L'╯',
+      L'─', L'│'
+  );
+  term_position pos = (term_position){position.row + 1, position.col + 1};
+  print_wfO(fileprint, globalLog, "{dirent}\n", name);
+  if (name->d_type == DT_DIR) {
+    usize superlen = strlen(supername);
+    usize sublen = strlen(name->d_name);
+    char sname[superlen + sublen + 1] = {};
+    memcpy(sname, supername, superlen);
+    memcpy(sname + superlen, name->d_name, sublen);
+    print_wfO(fileprint, globalLog, "opening {cstr}\n", (char *)sname);
+    DIR *sub = opendir(sname);
+    struct dirent *d = NULL;
+    while ((d = readdir(sub))) {
+      wchar w[sizeof(((struct dirent *)NULL)->d_name) / sizeof(char)];
+      mbstowcs(w, d->d_name, sizeof((struct dirent *)NULL)->d_name);
+      term_setLine(
+          pos, style,
+          w, wcslen(w), size.col - 1
+      );
+      pos.row++;
+    }
+    closedir(sub);
   }
 }
-void drawSuper(stringList *path) {
-  stringList_scoped *paths = stringList_remake(path);
-  stringList_remove(paths, stringList_length(paths) - 1);
+void drawSuperBox(DIR *directory) {
+  static DIR *last = NULL;
+
+  static List *dirList = NULL;
+  if (!dirList)
+    dirList = List_new(defaultAlloc, sizeof(struct dirent));
+  if (last != directory) {
+    dirList->length = 0;
+
+    struct dirent *d;
+    while ((d = readdir(directory))) {
+      List_append(dirList, d);
+    }
+
+    rewinddir(directory);
+  }
 
   term_position size = term_getTsize();
-  size.col--;
-  size.row--;
   size.col /= 3;
-  dirBox((term_position){0}, size, paths, stringList_get(path, stringList_length(path) - 1));
-}
-void drawPath(stringList *path) {
-  term_position size = term_getTsize();
-  size.col--;
+  size.col-=2;
   size.row--;
-  size.col /= 3;
-  term_position place = (term_position){0, size.col + 1};
-  dirBox(place, size, path, stringList_get(path, 0));
-}
-void drawSub(stringList *path, char *folderName) {
-  stringList_scoped *paths = stringList_remake(path);
-  stringList_append(paths, fptr_fromCS(folderName));
-}
-int main(int nargs, char **args) {
-  Arena_scoped *local = arena_new_ext(defaultAlloc, 1024);
+  term_position position = (term_position){0, 0};
+  term_cell style =
+      *term_makeCell(
+          L' ',
+          term_color_fromHex(0xffffff),
+          (term_color){},
+          term_cell_VISIBLE
+      );
+  term_cell selectedStyle = style;
+  selectedStyle.bg = term_color_fromHex(0xffffff);
+  selectedStyle.fg = term_color_fromHex(0x1);
+  draw_box(
+      position, size, style,
+      L'╭', L'╮',
+      L'╰', L'╯',
+      L'─', L'│'
+  );
 
-  char pwd[300];
-  getcwd(pwd, 300);
-  stringList_scoped *path = parsePath(pwd, local);
+  term_position pos = (term_position){position.row + 1, position.col + 1};
+  for (u32 i = 0; i < List_length(dirList); i++) {
+    wchar w[sizeof(((struct dirent *)NULL)->d_name) / sizeof(char)];
+    struct dirent *this = List_getRef(dirList, i);
+    mbstowcs(w, this->d_name, sizeof((struct dirent *)NULL)->d_name);
+    term_setLine(
+        pos, style,
+        w, wcslen(w), size.col - 1
+    );
+    pos.row++;
+  }
 
+  last = directory;
+}
+int main(void) {
+  char pwd[100];
+  assertMessage(getcwd(pwd, sizeof(pwd)), "pwd buffer too small probalby");
+
+  stringList *splitPath = stringList_new(defaultAlloc);
+  for (usize i = 0, j = 0; pwd[i]; i++) {
+    if (!pwd[i] || pwd[i] == JOINER) {
+      usize len = i - j;
+      len = len ? len - 1 : len;
+      stringList_append(splitPath, fptr_fromPL(pwd + j + 1, len));
+      j = i;
+    }
+    if (!pwd[i + 1]) {
+      usize len = i - j;
+      stringList_append(splitPath, fptr_fromPL(pwd + j + 1, len));
+    }
+  }
+
+  splitPath->List_stringMetaData.length--;
+  DIR *super = opendir(assembleDir(splitPath));
+  splitPath->List_stringMetaData.length++;
+  char *direname = assembleDir(splitPath);
+  DIR *main = opendir(direname);
+  term_input in = {0};
   while (1) {
-    drawSuper(path);
-    drawPath(path);
+    assertMessage(main);
+    i8 direction = 0;
+    switch (in.kind) {
+      case term_input_arrow: {
+        switch (in.data.arrow) {
+          case term_input_down:
+            direction = 1;
+            break;
+          case term_input_up:
+            direction = -1;
+            break;
+          default:;
+        }
+      } break;
+      default:;
+    }
+    struct dirent *file = drawMainBox(main, direction);
+    drawSubBox(main, file, direname);
+    drawSuperBox(super);
     term_render();
+    in = term_getInput(10);
     term_dump();
-    term_getInput(1);
   }
+  return 0;
 }
