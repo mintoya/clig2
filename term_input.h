@@ -55,6 +55,9 @@ typedef struct {
 term_input term_getInput(float timeout_seconds);
 
 #endif
+#if (defined(__INCLUDE_LEVEL__) && __INCLUDE_LEVEL__ == 0)
+#define MY_TERM_INPUT_C (1)
+#endif
 #ifdef MY_TERM_INPUT_C
 #include "wheels/print.h"
 
@@ -81,7 +84,7 @@ static struct termios old;
 }
 
 term_mouse mouse(u8 *buf, u8 len) {
-  int i = 0;
+  usize i = 0;
   for (; buf[i] != ';'; i++)
     ;
   uint codeint = fptr_toUint(((fptr){i, buf}));
@@ -106,16 +109,16 @@ term_mouse mouse(u8 *buf, u8 len) {
   return (term_mouse){
       .row = row - 1,
       .col = col - 1,
-      .term_mouse_drag = drag,
+      .code.unknown = (u8)codeint,
+      .state = (typeof(((term_mouse *)NULL)->state))(buf[i] != 'm'),
       .term_mouse_ctrl = ctrl,
+      .term_mouse_drag = drag,
       .term_mouse_alt = alt,
-      .code.unknown = codeint,
-      .state = buf[i] != 'm',
   };
 }
 
 term_input term_getInput(float timeout_seconds) {
-  term_input res = {0};
+  term_input res = {};
 
   // Use select() to wait for input with timeout
   fd_set readfds;

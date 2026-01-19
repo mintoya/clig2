@@ -210,7 +210,7 @@ int wwidth(wchar wc) {
 #endif
 
 #include "wheels/hhmap.h"
-static HHMap *back_buffer = NULL;
+static mHmap(term_position, term_cell) back_buffer = NULL;
 static bool justdumped = false;
 
 #ifdef _WIN32
@@ -232,9 +232,9 @@ __attribute__((hot)) void convertwrite(wchar_t *data, usize len) {
     u8data = (char *)aAlloc(defaultAlloc, bufSize);
     u8cap = bufSize;
     print_wfO(fileprint, globalLog, "maxwrite: {}\n", u8cap);
-    print_wfO(fileprint, globalLog, "hmap size: {}\n", HHMap_footprint(back_buffer));
-    print_wfO(fileprint, globalLog, "hmap keys: {}\n", (usize)HHMap_count(back_buffer));
-    print_wfO(fileprint, globalLog, "hmap collisions: {}\n", (usize)HHMap_countCollisions(back_buffer));
+    print_wfO(fileprint, globalLog, "hmap size: {}\n", HMap_footprint((HMap *)back_buffer));
+    print_wfO(fileprint, globalLog, "hmap keys: {}\n", (usize)HMap_count((HMap *)back_buffer));
+    print_wfO(fileprint, globalLog, "hmap collisions: {}\n", (usize)HMap_countCollisions((HMap *)back_buffer));
   }
 
   usize wlen = 0;
@@ -257,7 +257,7 @@ __attribute__((hot)) void convertwrite(wchar_t *data, usize len) {
 #endif
 
 #if defined(__linux__)
-  write(fileno(stdout), u8data, wlen);
+  write(STDOUT_FILENO, u8data, wlen);
 #else
   _write(_fileno(stdout), u8data, wlen);
 #endif
@@ -267,23 +267,23 @@ static_assert(sizeof(term_position) == sizeof(term_cell), "add alignment handlin
 [[gnu::constructor]] void term_setup(void) {
   u32 r = term_getTsize().row;
   u32 c = term_getTsize().col;
-  back_buffer = HHMap_new(
-      sizeof(term_position),
-      sizeof(term_cell),
+  back_buffer = mHmap_init(
       defaultAlloc,
+      term_position,
+      term_cell,
       r * c / 3 + 1
   );
   setvbuf(stdout, NULL, _IONBF, 0);
   globalLog = fopen("tui.log", "a");
 }
 [[gnu::destructor]] void term_cleanup(void) {
-  HHMap_free(back_buffer);
+  mHmap_deinit(back_buffer);
 }
 __attribute__((hot)) void term_setCell_Ref(struct term_position pos, const struct term_cell *cell) {
-  HHMap_set(back_buffer, &pos, cell);
+  mHmap_set(back_buffer, pos, *cell);
 }
 __attribute__((hot)) void term_setCell(struct term_position pos, term_cell cell) {
-  HHMap_set(back_buffer, &pos, &cell);
+  mHmap_set(back_buffer, pos, cell);
 }
 // will break if mp_cur_max ever changes
 // appends wchar to place+len, then increments len
@@ -412,44 +412,40 @@ void term_render(void) {
   term_color lastbg = {0};
   term_color lastfg = {0};
   term_cell lastCel = {0};
-  const u32 metaSize = HHMap_getMetaSize(back_buffer);
-  for (u32 i = 0; i < metaSize; i++) {
-    const u32 bucketSize = HHMap_getBucketSize(back_buffer, i);
-    for (u32 j = 0; j < bucketSize; j++) {
-      void *it = HHMap_getCoord(back_buffer, i, j);
-      term_position *position = (struct term_position *)it;
-      term_cell *cell = (struct term_cell *)((u8 *)it + sizeof(struct term_position));
+  mHmap_foreach(
+      back_buffer,
+      term_position, position,
+      term_cell, cell, {
+        term_color currentbg = cell.bg;
+        term_color currentfg = cell.fg;
 
-      term_color currentbg = cell->bg;
-      term_color currentfg = cell->fg;
-
-      if (
-          cell->visible &&
-          position->col < recent.col && position->row < recent.row &&
-          position->row > -1 && position->col > -1
-      ) {
-        L_addPos(printList, *position);
-        if (cell->inverse) {
-          term_color t = currentbg;
-          currentbg = currentfg;
-          currentfg = t;
+        if (
+            cell.visible &&
+            position.col < recent.col && position.row < recent.row &&
+            position.row > -1 && position.col > -1
+        ) {
+          L_addPos(printList, position);
+          if (cell.inverse) {
+            term_color t = currentbg;
+            currentbg = currentfg;
+            currentfg = t;
+          }
+          if (!styleeq(lastCel, cell)) {
+            L_addStyle(printList, cell, lastCel);
+            lastCel = cell;
+          }
+          if (!coloreq(currentbg, lastbg) || !coloreq(currentfg, lastfg)) {
+            L_fgcolor(printList, currentfg);
+            L_bgcolor(printList, currentbg);
+          }
+          lastbg = currentbg;
+          lastfg = currentfg;
+          // TODO move char check to setcell
+          wchar_t wc = cell.c && wwidth(cell.c) == 1 ? cell.c : L' ';
+          List_append(printList, &wc);
         }
-        if (!styleeq(lastCel, *cell)) {
-          L_addStyle(printList, *cell, lastCel);
-          lastCel = *cell;
-        }
-        if (!coloreq(currentbg, lastbg) || !coloreq(currentfg, lastfg)) {
-          L_fgcolor(printList, currentfg);
-          L_bgcolor(printList, currentbg);
-        }
-        lastbg = currentbg;
-        lastfg = currentfg;
-        // TODO move char check to setcell
-        wchar_t wc = cell->c && wwidth(cell->c) == 1 ? cell->c : L' ';
-        List_append(printList, &wc);
       }
-    }
-  }
+  );
   convertwrite((wchar *)printList->head, printList->length);
 
   printList->length = 0;
@@ -457,6 +453,6 @@ void term_render(void) {
 }
 void term_dump() {
   justdumped = true;
-  HHMap_clear(back_buffer);
+  HMap_clear((HMap *)back_buffer);
 }
 #endif // MY_TUI_C

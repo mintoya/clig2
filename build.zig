@@ -19,8 +19,13 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
-    exe.root_module.addCSourceFile(.{ .file = b.path("dirs.c"), .flags = &.{
+    exe.root_module.addCSourceFile(.{ .file = b.path("gol.c"), .flags = &.{
         "-w",
+        "-std=c2y",
+    } });
+    exe.root_module.addCSourceFile(.{ .file = b.path("include.c"), .flags = &.{
+        "-w",
+        "-std=c2y",
     } });
 
     b.installArtifact(exe);

@@ -91,7 +91,7 @@ void draw_gol() {
 }
 int main(void) {
   while (1) {
-    // term_input ti = term_getInput(10);
+    term_input ti = term_getInput(.01);
     draw_gol();
     term_render();
     term_dump();
