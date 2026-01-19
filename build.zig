@@ -4,7 +4,7 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
 
     const optimize = b.standardOptimizeOption(.{
-        .preferred_optimize_mode = .ReleaseFast,
+        .preferred_optimize_mode = .Debug,
     });
 
     // zig test
@@ -22,10 +22,12 @@ pub fn build(b: *std.Build) void {
     exe.root_module.addCSourceFile(.{ .file = b.path("gol.c"), .flags = &.{
         "-w",
         "-std=c2y",
+        "-D_GNU_SOURCE",
     } });
     exe.root_module.addCSourceFile(.{ .file = b.path("include.c"), .flags = &.{
         "-w",
         "-std=c2y",
+        "-D_GNU_SOURCE",
     } });
 
     b.installArtifact(exe);

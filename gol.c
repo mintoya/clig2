@@ -68,7 +68,7 @@ void draw_gol() {
               (term_position){i, j * 2},
               &(term_cell){
                   .fg = term_color_fromIdx(1),
-                  .bg = term_color_fromIdx(67),
+                  .bg = term_color_fromIdx(200),
                   .c = L' ',
                   .visible = 1,
               }
@@ -77,7 +77,7 @@ void draw_gol() {
               (term_position){i, j * 2 + 1},
               &(term_cell){
                   .fg = term_color_fromIdx(1),
-                  .bg = term_color_fromIdx(67),
+                  .bg = term_color_fromIdx(200),
                   .c = L' ',
                   .visible = 1,
               }
@@ -91,7 +91,7 @@ void draw_gol() {
 }
 int main(void) {
   while (1) {
-    term_input ti = term_getInput(.01);
+    // term_input ti = term_getInput(.01);
     draw_gol();
     term_render();
     term_dump();

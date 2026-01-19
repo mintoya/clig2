@@ -268,7 +268,7 @@ static_assert(sizeof(term_position) == sizeof(term_cell), "add alignment handlin
   u32 r = term_getTsize().row;
   u32 c = term_getTsize().col;
   back_buffer = mHmap_init(
-      defaultAlloc,
+      arena_new_ext(pageAllocator, 2048), // dont intend to free
       term_position,
       term_cell,
       r * c / 3 + 1
