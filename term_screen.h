@@ -232,6 +232,7 @@ __attribute__((hot)) void convertwrite(wchar_t *data, usize len) {
     u8data = (char *)aAlloc(defaultAlloc, bufSize);
     u8cap = bufSize;
     print_wfO(fileprint, globalLog, "maxwrite: {}\n", u8cap);
+    print_wfO(fileprint, globalLog, "{} by {}\n", term_getTsize().row, term_getTsize().col);
     print_wfO(fileprint, globalLog, "hmap size: {}\n", HMap_footprint((HMap *)back_buffer));
     print_wfO(fileprint, globalLog, "hmap keys: {}\n", (usize)HMap_count((HMap *)back_buffer));
     print_wfO(fileprint, globalLog, "hmap collisions: {}\n", (usize)HMap_countCollisions((HMap *)back_buffer));

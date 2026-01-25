@@ -64,18 +64,18 @@ void draw_gol() {
         else
           gol_setPoint(i, j, rand() % 100 < 10);
         if (lastState) {
-          term_setCell_Ref(
+          term_setCell(
               (term_position){i, j * 2},
-              &(term_cell){
+              (term_cell){
                   .fg = term_color_fromIdx(1),
                   .bg = term_color_fromIdx(200),
                   .c = L' ',
                   .visible = 1,
               }
           );
-          term_setCell_Ref(
+          term_setCell(
               (term_position){i, j * 2 + 1},
-              &(term_cell){
+              (term_cell){
                   .fg = term_color_fromIdx(1),
                   .bg = term_color_fromIdx(200),
                   .c = L' ',
@@ -91,7 +91,7 @@ void draw_gol() {
 }
 int main(void) {
   while (1) {
-    // term_input ti = term_getInput(.01);
+    term_input ti = term_getInput((float)1 / 60);
     draw_gol();
     term_render();
     term_dump();

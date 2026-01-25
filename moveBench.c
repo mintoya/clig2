@@ -1,7 +1,7 @@
-
 #include "term_input.h"
 #include "term_screen.h"
 #include <stdint.h>
+#include <time.h>
 
 u8 udist(term_position a, term_position b) {
   i32 ac = a.col / 2;
@@ -33,17 +33,49 @@ void render_circles(const term_input *input) {
       term_setCell_Ref(
           (term_position){i, j},
           term_makeCell(
-              L'x', term_color_fromIdx(255-dist), term_color_fromIdx(dist),
+              L'x', term_color_fromIdx(255 - dist), term_color_fromIdx(dist),
               term_cell_VISIBLE
           )
       );
     }
   }
 }
+#include <time.h>
+
 int main(void) {
+  clock_t current_time = clock();
+  clock_t last_time = current_time;
+
   while (1) {
+    current_time = clock();
+    double dt = (double)(current_time - last_time) / CLOCKS_PER_SEC;
+    last_time = current_time;
+
     const term_input ti = term_getInput(1);
     render_circles(&ti);
+
+    int displayTimeMS = (int)(dt * 1000.0);
+
+    int offset = 0;
+    for (size_t i = 1000; i >= 1; i /= 10) {
+      term_setCell(
+          (term_position){1, 1 + offset},
+          (term_cell){
+              .bg = {0},
+              .fg = term_color_fromIdx(255),
+              .visible = 1,
+              .c = L'0' + ((displayTimeMS / i) % 10),
+          }
+      );
+      offset++;
+    }
+
     term_render();
   }
 }
+
+#define MY_TERM_INPUT_C
+#include "term_input.h"
+#define MY_TUI_C
+#include "term_screen.h"
+#include "wheels/wheels.h"
